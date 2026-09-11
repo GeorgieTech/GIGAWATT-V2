@@ -141,6 +141,7 @@ Version trail of the live pair:
 | V2.1.1 | AirPlay skip fix: auto/soxr stuffing, 0.5 s buffer, no 1 Hz pactl into Pulse. |
 | V2.1.2 | Pulse was suspending TOSLINK (idle timeout 0) and ffmpeg-resampling 44.1→96 kHz. Hold the sink, speex resample, longer ALSA fragments. |
 | V2.2.0 | Cover Art Archive album art. Found cover on Playing/Library; visualizer if missing. |
+| V2.2.1 | Cover lookup no longer walks the whole library on every clock/status tick. Waveform keeps RAM to 4 caches. |
 
 Hard rules that did **not** change: no AirPlay / Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID.
 

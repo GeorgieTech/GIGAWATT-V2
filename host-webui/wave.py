@@ -415,6 +415,13 @@ class WaveIndex(object):
         t = threading.Thread(target=self._loop, name="wave-scan", daemon=True)
         t.start()
 
+    def _remember(self, path, data):
+        self.mem[path] = data
+        extra = len(self.mem) - 4
+        if extra > 0:
+            for old in list(self.mem.keys())[:extra]:
+                self.mem.pop(old, None)
+
     def get(self, rel):
         rel = (rel or "").replace("\\", "/").lstrip("/")
         full = _full_path(rel)
@@ -435,7 +442,7 @@ class WaveIndex(object):
                 data = json.load(fh)
             if isinstance(data, dict) and data.get("v") == WAVE_VER and data.get("l") and data.get("m") and data.get("h"):
                 with self.lock:
-                    self.mem[path] = data
+                    self._remember(path, data)
                 out = dict(data)
                 out["ok"] = True
                 out["name"] = rel
@@ -566,7 +573,7 @@ class WaveIndex(object):
                     data = json.load(fh)
                 if isinstance(data, dict) and data.get("v") == WAVE_VER and data.get("n"):
                     with self.lock:
-                        self.mem[path] = data
+                        self._remember(path, data)
                         self.error.pop(rel, None)
                     return
             except (OSError, ValueError):
@@ -589,7 +596,7 @@ class WaveIndex(object):
         except OSError:
             pass
         with self.lock:
-            self.mem[path] = data
+            self._remember(path, data)
             self.error.pop(rel, None)
 
 

@@ -949,7 +949,7 @@ let coverAsked = {};
 function askCovers(tracks) {
   let n = 0;
   (tracks || []).forEach((t) => {
-    if (n >= 4) return;
+    if (n >= 1) return;
     if (!t || !t.name || t.cover || t.cover_missing) return;
     if (coverAsked[t.name]) return;
     coverAsked[t.name] = 1;

@@ -2,7 +2,7 @@
 # Copy this checkout onto one Gigawatt host and install.
 # Usage: scripts/push-host.sh 192.168.1.179
 # SSH user is RPM. Do not put the password in this file.
-# Every host should get the same tag (currently v2.2.0).
+# Every host should get the same tag (currently v2.2.1).
 set -euo pipefail
 HOST="${1:-}"
 if [ -z "$HOST" ]; then

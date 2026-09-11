@@ -367,6 +367,14 @@ class CryptApp(object):
         queue, queue_total = self._upcoming(order, tracks, idx, 5)
         eq = clamp_eq(snap.get("eq"))
         me = identity()
+        playing_name = snap.get("name") or ""
+        cover_artist = cover_album = cover_title = ""
+        for t in tracks:
+            if t.get("name") == playing_name:
+                cover_artist = t.get("artist") or ""
+                cover_album = t.get("album") or ""
+                cover_title = t.get("title") or ""
+                break
         return {
             "host": me.get("host") or socket.gethostname(),
             "model": me.get("model") or "SHR-S2-00",
@@ -384,7 +392,12 @@ class CryptApp(object):
             "disk": _disk(),
             "peer": PEERS.snapshot(),
             "fleet": PEERS.summary(),
-            "cover": COVERS.snapshot(snap.get("name") or ""),
+            "cover": COVERS.snapshot(
+                playing_name,
+                artist=cover_artist,
+                album=cover_album,
+                title=cover_title,
+            ),
             "output": load_playback().get("output") or "jack",
             "airplay": AIRPLAY.snapshot() if AIRPLAY is not None else {
                 "available": False, "enabled": False, "active": False,

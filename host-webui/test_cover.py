@@ -35,6 +35,18 @@ class PickTests(unittest.TestCase):
 
 
 class KeyTests(unittest.TestCase):
+    def test_snapshot_uses_passed_tags(self):
+        folder = tempfile.mkdtemp(prefix="crypt-cover-")
+        try:
+            idx = cover.CoverIndex(folder=folder, http_json=lambda url: None, http_bytes=lambda url: (b"", ""), pause=0)
+            idx._alive = False
+            snap = idx.snapshot("no-such.flac", artist="Daft Punk", album="RAM", title="Get Lucky")
+            self.assertEqual(snap["artist"], "Daft Punk")
+            self.assertEqual(snap["album"], "RAM")
+            self.assertFalse(snap["found"])
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
     def test_same_album_same_key(self):
         a = cover.album_key("Daft Punk", "Random Access Memories")
         b = cover.album_key("  daft   punk ", "random access memories")

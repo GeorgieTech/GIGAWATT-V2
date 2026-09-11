@@ -130,21 +130,31 @@ def _http_bytes(url):
         return b"", ""
 
 
-def _ident(rel):
+def _ident(rel, artist="", album="", title=""):
     rel = (rel or "").replace("\\", "/").lstrip("/")
-    artist = album = title = ""
-    for t in CATALOG.tracks() or []:
-        if t.get("name") == rel:
-            artist = t.get("artist") or ""
-            album = t.get("album") or ""
-            title = t.get("title") or ""
-            break
-    if not (artist and album and title):
-        ident = identity_from_path(rel)
-        artist = artist or ident.get("artist") or ""
-        album = album or ident.get("album") or ""
-        title = title or ident.get("title") or ""
-    return rel, artist, album, title
+    artist = artist or ""
+    album = album or ""
+    title = title or ""
+    if artist and album and title:
+        return rel, artist, album, title
+    probed = {}
+    _rel, full = _join(rel)
+    if full:
+        try:
+            from library import _probe_key
+            st = os.stat(full)
+            key = _probe_key(rel, st.st_size, int(st.st_mtime))
+            with CATALOG.lock:
+                probed = dict(CATALOG.cache.get(key) or {})
+        except Exception:
+            probed = {}
+    ident = identity_from_path(rel, probed)
+    return (
+        rel,
+        artist or ident.get("artist") or "",
+        album or ident.get("album") or "",
+        title or ident.get("title") or "",
+    )
 
 
 def _join(rel):
@@ -197,8 +207,8 @@ class CoverIndex(object):
         except OSError:
             pass
 
-    def snapshot(self, rel):
-        rel, artist, album, title = _ident(rel)
+    def snapshot(self, rel, artist="", album="", title=""):
+        rel, artist, album, title = _ident(rel, artist, album, title)
         key = album_key(artist, album, rel)
         row = self._row(key)
         found = bool(row.get("found") and os.path.isfile(self._path(key)))
@@ -350,6 +360,13 @@ class CoverIndex(object):
                 return raw, _ctype(raw)
         os.makedirs(self.folder, exist_ok=True)
         dest = os.path.join(self.folder, "extract-" + album_key("", "", rel) + ".img")
+        try:
+            from wave import WAVES
+            with WAVES.lock:
+                if WAVES.busy:
+                    return b"", ""
+        except Exception:
+            pass
         try:
             subprocess.check_call(
                 [
