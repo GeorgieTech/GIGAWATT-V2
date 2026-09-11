@@ -1,10 +1,10 @@
-# Gigawatt V2.1.2
+# Gigawatt V2.2.0
 
 Repo: [`GIGAWATT-V2`](https://github.com/GeorgieTech/GIGAWATT-V2)
 
 A local TOSLINK music player on recycled Savant S2 hosts (DualLite SHR-S2-00 and Quad SHC-S2-00). Library on disk, web UI on port 80, optical out.
 
-**Current release: [V2.1.2](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.1.2)** (`v2.1.2`). Previous: [V2.1.1](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.1.1) · [V2.1.0](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.1.0).
+**Current release: [V2.2.0](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.0)** (`v2.2.0`). Previous: [V2.1.2](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.1.2) · [V2.1.1](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.1.1).
 
 This project is **not affiliated with Savant Systems**.
 
@@ -12,7 +12,9 @@ Targets: **192.168.1.179** (DualLite S2 mule) and **192.168.1.142** (first SHC-2
 
 Lineage: this is the V2 rewrite of the CRYPT DualLite/Quad lab player (`savant-host-s2-smart-home-processor-BETA1`). Wire discovery is still CRYPT/1 so the two lab boxes keep finding each other.
 
-## What V2.1.0 does
+## What V2.2.0 does
+
+- **Album covers from Cover Art Archive** (same source as the Jellyfin Cover Art Archive plugin). Local `cover.jpg` / embedded art first, then MusicBrainz release → coverartarchive.org. Playing shows the cover when found, otherwise the visualizer. Library thumbnails do the same.
 
 - **This jack or this browser.** Settings → Playback. TOSLINK is the default. This browser plays on the phone or laptop that opened the page (HTML5 audio from `/api/media`). Only one at a time.
 - **AirPlay 1 to this host.** Settings → AirPlay. Each chassis advertises its own name (`Gigawatt E409`, `Gigawatt 39DB`, …). You can rename it. iPhone/Mac → Pulse → TOSLINK. Same armv7 `shairport-sync` as Gigawatt Beta 2.

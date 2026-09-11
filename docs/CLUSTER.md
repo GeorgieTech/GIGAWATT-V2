@@ -140,6 +140,7 @@ Version trail of the live pair:
 | V2.1.0 | Browser playback and AirPlay 1 (unique renameable name per host). Same shairport-sync as Gigawatt Beta 2. |
 | V2.1.1 | AirPlay skip fix: auto/soxr stuffing, 0.5 s buffer, no 1 Hz pactl into Pulse. |
 | V2.1.2 | Pulse was suspending TOSLINK (idle timeout 0) and ffmpeg-resampling 44.1→96 kHz. Hold the sink, speex resample, longer ALSA fragments. |
+| V2.2.0 | Cover Art Archive album art. Found cover on Playing/Library; visualizer if missing. |
 
 Hard rules that did **not** change: no AirPlay / Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID.
 

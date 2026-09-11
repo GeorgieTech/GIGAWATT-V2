@@ -16,6 +16,7 @@ report.py
 essay.py
 peers.py
 crypt_wire.py
+cover.py
 airplay.py
 playback.py
 manifest.webmanifest

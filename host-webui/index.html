@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.1.2</div>
+      <div class="sub">S2 · V2.2.0</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -40,6 +40,7 @@
       </div>
       <div class="viz-wrap" id="vizwrap">
         <canvas id="viz" aria-label="Album art visualizer"></canvas>
+        <img id="coverart" alt="" hidden>
         <audio id="tap" playsinline webkit-playsinline preload="auto"></audio>
       </div>
       <div class="now-block">
@@ -708,7 +709,24 @@ function loadWave(name) {
     }
   });
 }
+function loadCover(name) {
+  const wrap = $("vizwrap");
+  const img = $("coverart");
+  if (!wrap || !img) return;
+  const data = last.cover || {};
+  if (name && data.name === name && data.found && data.url) {
+    wrap.classList.add("has-cover");
+    img.hidden = false;
+    if (img.getAttribute("src") !== data.url) img.src = data.url;
+    stopViz();
+    return;
+  }
+  wrap.classList.remove("has-cover");
+  img.hidden = true;
+  startViz();
+}
 $("viz").addEventListener("click", () => { unlockAudio(); toggle(); });
+if ($("coverart")) $("coverart").addEventListener("click", () => { unlockAudio(); toggle(); });
 document.addEventListener("pointerdown", unlockAudio);
 tap.audio.addEventListener("playing", () => { tap.ok = true; });
 tap.audio.addEventListener("error", () => { tap.ok = false; });
@@ -1133,6 +1151,8 @@ async function tick() {
     badge.setAttribute("aria-label", playing ? "Playing" : paused ? "Paused" : "Idle");
     $("vizwrap").classList.toggle("live", playing);
     document.body.classList.toggle("is-playing", playing);
+    if (apOn) loadCover("");
+    else loadCover(p.name || "");
     renderQueue(st);
   } catch (e) {
     $("err").textContent = "Host is not answering";

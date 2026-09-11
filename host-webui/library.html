@@ -148,7 +148,10 @@ function hashName(s) {
   }
   return (h >>> 0) || 1;
 }
-function coverHTML(seed, letters, round) {
+function coverHTML(seed, letters, round, url) {
+  if (url) {
+    return "<img class='cover" + (round ? " round" : "") + "' src='" + esc(url) + "' alt=''>";
+  }
   const h = hashName(seed);
   const h1 = h % 360;
   const h2 = (h >> 9) % 360;
@@ -180,8 +183,9 @@ function artists() {
   const map = {};
   tracks().filter(hit).forEach((t) => {
     const k = t.artist || "Unknown artist";
-    if (!map[k]) map[k] = { name: k, count: 0 };
+    if (!map[k]) map[k] = { name: k, count: 0, cover: t.cover || "" };
     map[k].count += 1;
+    if (t.cover && !map[k].cover) map[k].cover = t.cover;
   });
   return Object.keys(map).sort((a, b) => a.localeCompare(b)).map((k) => map[k]);
 }
@@ -190,8 +194,9 @@ function albums(forArtist) {
   tracks().filter(hit).forEach((t) => {
     if (forArtist && t.artist !== forArtist) return;
     const key = (t.artist || "") + "\n" + (t.album || "Unknown album");
-    if (!map[key]) map[key] = { artist: t.artist, album: t.album || "Unknown album", count: 0, key: key };
+    if (!map[key]) map[key] = { artist: t.artist, album: t.album || "Unknown album", count: 0, key: key, cover: t.cover || "" };
     map[key].count += 1;
+    if (t.cover && !map[key].cover) map[key].cover = t.cover;
   });
   return Object.keys(map).sort((a, b) => a.localeCompare(b)).map((k) => map[k]);
 }
@@ -515,7 +520,7 @@ function rowTrack(t, opts) {
   const bits = [t.artist, t.album].filter(Boolean);
   const sub = bits.join(" · ");
   const chip = t.home_stamp ? ("<span class='home-chip " + (t.here ? "here" : "away") + "'>" + esc(t.home_stamp) + "</span>") : "";
-  li.innerHTML = coverHTML(t.name || titleOf(t), titleOf(t)) +
+  li.innerHTML = coverHTML(t.name || titleOf(t), titleOf(t), false, t.cover) +
     "<div class='grow'><div class='name'>" + chip + esc(titleOf(t)) + "</div><div class='sub'>" + esc(sub) + "</div></div>";
   const extra = [];
   if (!(opts && opts.noAdd)) {
@@ -586,7 +591,7 @@ function render() {
         ul.appendChild(h);
       }
       const li = document.createElement("li");
-      li.innerHTML = coverHTML(a.name, a.name, true) +
+      li.innerHTML = coverHTML(a.name, a.name, true, a.cover) +
         "<span class='name'>" + esc(a.name) + "</span><span class='size'>" + a.count + "</span>";
       li.onclick = () => { artist = a.name; album = ""; render(); };
       ul.appendChild(li);
@@ -601,7 +606,7 @@ function render() {
     ul.className = "tracks album-grid";
     list.forEach((a) => {
       const li = document.createElement("li");
-      li.innerHTML = coverHTML((a.artist || "") + a.album, a.album) +
+      li.innerHTML = coverHTML((a.artist || "") + a.album, a.album, false, a.cover) +
         "<div class='name'>" + esc(a.album) + "</div>" +
         "<div class='sub'>" + esc(a.artist) + " · " + a.count + "</div>";
       li.onclick = () => { artist = a.artist; album = a.album; render(); };
@@ -931,12 +936,26 @@ function applyLib(st, lib, force) {
   }
   const tagged = (lib.tracks || []).reduce((acc, t) => acc + (t.tagged ? 1 : 0), 0);
   const homes = (lib.tracks || []).map((t) => (t.home_stamp || "") + (t.here ? "h" : "")).join("");
-  const next = n + ":" + tagged + ":" + (lib.scanning ? 1 : 0) + ":" + view + ":" + artist + ":" + album + ":" + playlistId + ":" + q() + ":" + playingName() + ":" + (lib.playlists || []).map((x) => x.id + x.count).join(",") + ":" + homes + ":" + shelves.length;
+  const covers = (lib.tracks || []).reduce((acc, t) => acc + (t.cover ? 1 : 0), 0);
+  const next = n + ":" + tagged + ":" + (lib.scanning ? 1 : 0) + ":" + view + ":" + artist + ":" + album + ":" + playlistId + ":" + q() + ":" + playingName() + ":" + (lib.playlists || []).map((x) => x.id + x.count).join(",") + ":" + homes + ":" + shelves.length + ":" + covers;
   if (manage && !force) return;
   if (force || next !== stamp) {
     stamp = next;
     render();
   }
+  askCovers(lib.tracks || []);
+}
+let coverAsked = {};
+function askCovers(tracks) {
+  let n = 0;
+  (tracks || []).forEach((t) => {
+    if (n >= 4) return;
+    if (!t || !t.name || t.cover || t.cover_missing) return;
+    if (coverAsked[t.name]) return;
+    coverAsked[t.name] = 1;
+    n += 1;
+    fetch("/api/cover?name=" + encodeURIComponent(t.name) + "&fetch=1").catch(() => {});
+  });
 }
 async function tick(force) {
   if (jobBusy && !force) return;

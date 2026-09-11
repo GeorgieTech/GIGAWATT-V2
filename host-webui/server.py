@@ -21,6 +21,7 @@ from wave import WAVES
 from lyrics import LYRICS
 from report import REPORTS
 from peers import PEERS, VERSION, identity
+from cover import COVERS
 from airplay import AirPlay
 from playback import load_playback, save_playback
 
@@ -216,6 +217,7 @@ def _library_payload(local_only=False, tracks=None):
         tracks = _library(local_only=local_only)
     peer = PEERS.snapshot()
     peer["error"] = PEERS.error
+    tracks = COVERS.decorate(tracks)
     return {
         "ok": True,
         "tracks": tracks,
@@ -382,6 +384,7 @@ class CryptApp(object):
             "disk": _disk(),
             "peer": PEERS.snapshot(),
             "fleet": PEERS.summary(),
+            "cover": COVERS.snapshot(snap.get("name") or ""),
             "output": load_playback().get("output") or "jack",
             "airplay": AIRPLAY.snapshot() if AIRPLAY is not None else {
                 "available": False, "enabled": False, "active": False,
@@ -524,8 +527,10 @@ class CryptApp(object):
         ok = self.player.play(name, start=start, silent=self._silent())
         if ok:
             WAVES.ensure(name, front=True)
+            COVERS.ensure(name, front=True)
             if nxt:
                 WAVES.ensure(nxt)
+                COVERS.ensure(nxt)
         return ok
 
     def play_playlist(self, pid):
@@ -543,8 +548,10 @@ class CryptApp(object):
         ok = self.player.play(name, start=start, silent=self._silent())
         if ok:
             WAVES.ensure(name, front=True)
+            COVERS.ensure(name, front=True)
             if nxt:
                 WAVES.ensure(nxt)
+                COVERS.ensure(nxt)
         return ok
 
     def play_index(self, idx):
@@ -757,6 +764,35 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if raw_path == "/api/eq":
                 self._send(200, APP.eq_state())
+                return
+            if raw_path == "/api/cover":
+                name = _qparam(qs, "name")
+                fetch = _qparam(qs, "fetch") in ("1", "true", "yes")
+                if fetch:
+                    COVERS.ensure(name, front=True)
+                self._send(200, COVERS.snapshot(name))
+                return
+            if raw_path == "/api/cover/file":
+                path, ctype = COVERS.file_for(_qparam(qs, "id"))
+                if not path:
+                    self._send(404, {"ok": False, "error": "no cover"})
+                    return
+                try:
+                    size = os.path.getsize(path)
+                    with open(path, "rb") as fh:
+                        raw = fh.read()
+                except OSError:
+                    self._send(404, {"ok": False, "error": "no cover"})
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", ctype or "image/jpeg")
+                self.send_header("Content-Length", str(size))
+                self.send_header("Cache-Control", "private, max-age=86400")
+                self.end_headers()
+                try:
+                    self.wfile.write(raw)
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
                 return
             if raw_path == "/api/wave":
                 name = _qparam(qs, "name")
