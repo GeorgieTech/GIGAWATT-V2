@@ -43,6 +43,34 @@
       <div class="err" id="err"></div>
       <div class="okline" id="ok"></div>
     </section>
+    <section class="card">
+      <div class="section-head">
+        <h2>Playback</h2>
+        <span class="badge" id="out-badge">This jack</span>
+      </div>
+      <p class="hint">This jack is the TOSLINK output on this chassis. This browser plays on the phone or laptop that opened the page. Only one at a time.</p>
+      <div class="mode-chip" id="out-chips" role="group" aria-label="Playback">
+        <button type="button" id="out-jack">This jack</button>
+        <button type="button" id="out-browser">This browser</button>
+      </div>
+    </section>
+    <section class="card">
+      <div class="section-head">
+        <h2>AirPlay</h2>
+        <span class="badge" id="ap-badge">Off</span>
+      </div>
+      <p class="hint">Each host advertises its own AirPlay 1 name. iPhone or Mac plays to this TOSLINK. Rename so two boxes never look the same in Control Center.</p>
+      <div class="row">
+        <button type="button" class="primary" id="ap-toggle">Turn on</button>
+      </div>
+      <div class="row">
+        <label class="field">AirPlay name
+          <input id="ap-name" type="text" maxlength="50" autocomplete="off" spellcheck="false">
+        </label>
+        <button type="button" class="ghost" id="ap-save">Save name</button>
+      </div>
+      <p class="meta tight" id="ap-meta"></p>
+    </section>
   </main>
   <nav class="tabbar">
     <a href="/">Playing</a>
@@ -267,8 +295,76 @@ async function unlinkHost(h) {
   }
 }
 $("btn-scan").onclick = scan;
+
+async function loadPlayback() {
+  try {
+    const data = await (await fetch("/api/playback")).json();
+    const output = data.output || "jack";
+    $("out-jack").className = output === "jack" ? "on" : "";
+    $("out-browser").className = output === "browser" ? "on" : "";
+    $("out-badge").textContent = output === "browser" ? "This browser" : "This jack";
+    $("out-badge").className = "badge " + (output === "browser" ? "live" : "");
+    const ap = data.airplay || {};
+    const on = !!ap.enabled;
+    $("ap-toggle").textContent = on ? "Turn off" : "Turn on";
+    $("ap-toggle").disabled = !ap.available;
+    $("ap-name").value = ap.name || "";
+    $("ap-badge").textContent = !ap.available ? "Missing" : (ap.active ? "Playing" : (on ? "On" : "Off"));
+    $("ap-badge").className = "badge " + (ap.active ? "live" : (on ? "seen" : ""));
+    const bits = [];
+    if (!ap.available) bits.push("AirPlay binary is not installed on this host");
+    else if (ap.error) bits.push(ap.error);
+    else if (ap.active) bits.push((ap.title || "AirPlay") + (ap.artist ? (" · " + ap.artist) : ""));
+    else if (on) bits.push("Advertised as “" + (ap.name || "") + "”");
+    $("ap-meta").textContent = bits.join(" · ");
+  } catch (e) {}
+}
+$("out-jack").onclick = async () => {
+  await apiPlayback({ output: "jack" });
+};
+$("out-browser").onclick = async () => {
+  await apiPlayback({ output: "browser" });
+};
+async function apiPlayback(body) {
+  try {
+    await fetch("/api/playback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+  } catch (e) {}
+  loadPlayback();
+}
+$("ap-toggle").onclick = async () => {
+  const on = $("ap-toggle").textContent.indexOf("off") >= 0;
+  try {
+    await fetch("/api/airplay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: !on }),
+    });
+  } catch (e) {}
+  loadPlayback();
+};
+$("ap-save").onclick = async () => {
+  try {
+    const res = await fetch("/api/airplay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: $("ap-name").value }),
+    });
+    const data = await res.json();
+    $("ok").textContent = data.ok ? ("AirPlay name: " + ((data.airplay || {}).name || "")) : "";
+    $("err").textContent = data.ok ? "" : (data.error || "could not rename");
+  } catch (e) {
+    $("err").textContent = "Host is not answering";
+  }
+  loadPlayback();
+};
 loadFleet(true);
+loadPlayback();
 setInterval(() => loadFleet(true), 4000);
+setInterval(loadPlayback, 4000);
 </script>
 </body>
 </html>

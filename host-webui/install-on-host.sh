@@ -5,9 +5,25 @@ set -e
 mkdir -p /data/www /data/music /data/crypt
 cp /tmp/VERSION /tmp/index.html /tmp/library.html /tmp/eq.html /tmp/karaoke.html /tmp/report.html /tmp/settings.html /tmp/crypt.css \
   /tmp/server.py /tmp/player.py /tmp/library.py /tmp/wave.py /tmp/lyrics.py /tmp/research.py /tmp/report.py /tmp/essay.py /tmp/peers.py /tmp/crypt_wire.py \
+  /tmp/airplay.py /tmp/playback.py \
   /tmp/pin-hostname.sh /tmp/manifest.webmanifest /tmp/favicon.svg /tmp/icon.png /tmp/apple-touch-icon.png /data/www/
 rm -f /data/www/unison.py
 chmod +x /data/www/pin-hostname.sh /data/www/server.py /data/www/player.py
+APSRC=""
+if [ -x /tmp/gigawatt-airplay/shairport-sync ]; then
+  APSRC=/tmp/gigawatt-airplay
+elif [ -x /tmp/gigawatt-airplay/airplay/shairport-sync ]; then
+  APSRC=/tmp/gigawatt-airplay/airplay
+elif [ -x /tmp/airplay/shairport-sync ]; then
+  APSRC=/tmp/airplay
+fi
+if [ -n "$APSRC" ]; then
+  rm -rf /data/opt/airplay
+  mkdir -p /data/opt
+  cp -a "$APSRC" /data/opt/airplay
+  chmod +x /data/opt/airplay/run-shairport /data/opt/airplay/shairport-sync || true
+  chown -R RPM:RPM /data/opt/airplay
+fi
 chown -R RPM:RPM /data/www /data/music /data/crypt
 cp /tmp/crypt-web.service /tmp/crypt-pulse.service /tmp/crypt-hostname.service /etc/systemd/system/
 systemctl mask savant-startup-manager.service nginx.service || true

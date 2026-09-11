@@ -449,6 +449,7 @@ class HostPlayer(object):
         self._vol = self._read_sink_volume()
         self._vol_target = self._vol
         self._muted = False
+        self._soft = False
         self._clock_init()
         self._set_mute(False)
         threading.Thread(target=self._watch, daemon=True).start()
@@ -470,9 +471,10 @@ class HostPlayer(object):
                 "error": self.error,
                 "eq": list(self.eq),
                 "clock": clock,
+                "source": "browser" if self._soft else "jack",
             }
 
-    def play(self, relname, start=0.0):
+    def play(self, relname, start=0.0, silent=False):
         base = os.path.realpath(MUSIC_DIR)
         full = os.path.realpath(os.path.join(base, relname.replace("\\", "/").lstrip("/")))
         if full != base and not full.startswith(base + os.sep):
@@ -493,6 +495,9 @@ class HostPlayer(object):
             self.duration = self._probe(full)
             if self.duration and start >= max(0.0, self.duration - 0.2):
                 start = 0.0
+            if silent:
+                return self._cue_locked(start)
+            self._soft = False
             return self._play_locked(full, start)
 
     def pause(self):
@@ -507,6 +512,10 @@ class HostPlayer(object):
             return True
         self.hold = self._position_locked()
         self._play_corr = 0.0
+        if self._soft:
+            self.paused = True
+            self.error = ""
+            return True
         self._set_mute(True)
         try:
             os.killpg(os.getpgid(self.proc.pid), signal.SIGSTOP)
@@ -524,6 +533,12 @@ class HostPlayer(object):
                 self.error = "nothing playing"
                 return False
             if not self.paused:
+                return True
+            if self._soft:
+                self.t0 = time.monotonic() - (self.hold - self.offset)
+                self._play_corr = 0.0
+                self.paused = False
+                self.error = ""
                 return True
             try:
                 os.killpg(os.getpgid(self.proc.pid), signal.SIGCONT)
@@ -638,6 +653,12 @@ class HostPlayer(object):
                 pos = 0.0
             if self.duration > 0:
                 pos = min(pos, max(0.0, self.duration - 0.15))
+            if self._soft:
+                self.offset = pos
+                self.hold = pos
+                self.t0 = time.monotonic()
+                self.error = ""
+                return True
             return self._play_locked(self.media, pos)
 
     def set_eq(self, gains):
@@ -665,6 +686,8 @@ class HostPlayer(object):
         with self.lock:
             self._eq_timer = None
             if not self.media:
+                return
+            if self._soft:
                 return
             if not self._alive_locked() and not self.paused:
                 return
@@ -728,6 +751,8 @@ class HostPlayer(object):
             time.sleep(0.018)
 
     def _alive_locked(self):
+        if self._soft:
+            return bool(self.name)
         return self.proc is not None and self.proc.poll() is None
 
     def _clock_init(self):
@@ -869,9 +894,21 @@ class HostPlayer(object):
         except (TypeError, ValueError):
             return 0.0
 
+    def _cue_locked(self, start):
+        self._stop_locked()
+        self._soft = True
+        self.offset = start
+        self.hold = start
+        self.t0 = time.monotonic()
+        self.paused = False
+        self.error = ""
+        self._clock_on = True
+        return True
+
     def _stop_locked(self):
         proc = self.proc
         self.proc = None
+        self._soft = False
         self.paused = False
         self.offset = 0.0
         self.hold = 0.0

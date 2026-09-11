@@ -27,7 +27,7 @@ from library import CATALOG, UNKNOWN_ARTIST, UNKNOWN_ALBUM, identity_from_path
 
 LYRICS_DIR = os.environ.get("CRYPT_LYRICS", "/data/crypt/lyrics")
 LRCLIB = os.environ.get("CRYPT_LRCLIB", "https://lrclib.net/api")
-CLIENT = "CRYPT/2.0.2 (https://github.com/GeorgieTech/GIGAWATT-V2)"
+CLIENT = "CRYPT/2.1.0 (https://github.com/GeorgieTech/GIGAWATT-V2)"
 AUDIO_EXT = (".mp3", ".flac", ".opus", ".ogg", ".wav", ".m4a", ".aac")
 
 _TS = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]")

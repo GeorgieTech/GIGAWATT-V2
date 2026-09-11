@@ -1,6 +1,6 @@
 # CRYPT/1 — host-to-host protocol (deploy this)
 
-Status: **Gigawatt V2.0.2** — linked hosts share libraries only. Unlink is sticky and **splits catalogs**: this jack lists only home files; copies pulled from that host are removed here. No auto-relink from Settings probe or boot hello. Copy-then-play onto **this** jack. Group play / Unison / CLOCK fan-out are retired and will be revisited later. Discovery is still CRYPT/1 multicast `239.18.20.1:41880` plus JSON broadcast fallback. `beacon.igmp_ok` / `igmp_error` stay sticky. libver is the catalog ETag. BEACON still has a unison bit; V2 always sends it false. Install the **same tag** on every host (`scripts/push-host.sh`).
+Status: **Gigawatt V2.1.0** — linked hosts share libraries only. Unlink is sticky and **splits catalogs**: this jack lists only home files; copies pulled from that host are removed here. No auto-relink from Settings probe or boot hello. Copy-then-play onto **this** jack. Group play / Unison / CLOCK fan-out are retired and will be revisited later. Discovery is still CRYPT/1 multicast `239.18.20.1:41880` plus JSON broadcast fallback. `beacon.igmp_ok` / `igmp_error` stay sticky. libver is the catalog ETag. BEACON still has a unison bit; V2 always sends it false. Install the **same tag** on every host (`scripts/push-host.sh`).
 
 Targets: **192.168.1.179** (DualLite mule, UID `001AAE10E4090000`) and **192.168.1.142** (SHC-2000 Quad, UID `001AAE0739DB0000`). Never **.40 / .178 / .180**.
 

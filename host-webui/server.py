@@ -21,10 +21,14 @@ from wave import WAVES
 from lyrics import LYRICS
 from report import REPORTS
 from peers import PEERS, VERSION, identity
+from airplay import AirPlay
+from playback import load_playback, save_playback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("WEBUI_PORT", "80"))
 EQ_FILE = os.environ.get("EQ_FILE", "/data/crypt/eq.json")
+AIRPLAY_DIR = os.environ.get("AIRPLAY_DIR", "/data/opt/airplay")
+AIRPLAY = None
 
 
 def _eq_bands():
@@ -378,6 +382,11 @@ class CryptApp(object):
             "disk": _disk(),
             "peer": PEERS.snapshot(),
             "fleet": PEERS.summary(),
+            "output": load_playback().get("output") or "jack",
+            "airplay": AIRPLAY.snapshot() if AIRPLAY is not None else {
+                "available": False, "enabled": False, "active": False,
+                "name": "", "title": "", "artist": "", "album": "", "client": "", "error": "",
+            },
         }
 
     def clock(self):
@@ -468,8 +477,23 @@ class CryptApp(object):
             self.player.error = "could not copy from shelf"
         return ok
 
+    def set_output(self, output):
+        if output not in ("jack", "browser"):
+            return load_playback(), "need jack or browser"
+        pb, err = save_playback(output=output)
+        if err:
+            return pb, err
+        snap = self.player.snapshot()
+        name = snap.get("name") or ""
+        pos = snap.get("position") or 0
+        if name:
+            self.player.play(name, start=pos, silent=(pb.get("output") == "browser"))
+        return pb, ""
+
     def play_name(self, name, start=0.0, order=None, follow=False, conductor="", conductor_uid=""):
         self.refresh()
+        if AIRPLAY is not None and AIRPLAY.snapshot().get("active"):
+            AIRPLAY.bounce()
         if not self._ensure_local(name):
             return False
         with self.lock:
@@ -497,7 +521,7 @@ class CryptApp(object):
                 return False
             self.index = self.order.index(name)
             nxt = self.order[self.index + 1] if self.index + 1 < len(self.order) else ""
-        ok = self.player.play(name, start=start)
+        ok = self.player.play(name, start=start, silent=self._silent())
         if ok:
             WAVES.ensure(name, front=True)
             if nxt:
@@ -510,10 +534,13 @@ class CryptApp(object):
             return False
         return self.play_name(pl["tracks"][0], order=pl["tracks"])
 
+    def _silent(self):
+        return load_playback().get("output") == "browser"
+
     def _start_name(self, name, start=0.0, nxt="", follow=False):
         if not self._ensure_local(name):
             return False
-        ok = self.player.play(name, start=start)
+        ok = self.player.play(name, start=start, silent=self._silent())
         if ok:
             WAVES.ensure(name, front=True)
             if nxt:
@@ -640,6 +667,17 @@ class CryptApp(object):
 APP = CryptApp()
 
 
+def _on_airplay_begin():
+    APP.stop()
+
+
+AIRPLAY = AirPlay(
+    AIRPLAY_DIR,
+    on_begin=_on_airplay_begin,
+    name=load_playback().get("airplay_name"),
+)
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -707,6 +745,11 @@ class Handler(BaseHTTPRequestHandler):
             if raw_path == "/api/fleet":
                 probe = _qparam(qs, "probe") in ("1", "true", "yes")
                 self._send(200, PEERS.fleet(probe=probe, extra=_hello_extra()))
+                return
+            if raw_path in ("/api/playback", "/api/airplay"):
+                pb = load_playback()
+                air = AIRPLAY.snapshot() if AIRPLAY is not None else {}
+                self._send(200, {"ok": True, "output": pb.get("output") or "jack", "airplay": air})
                 return
             if raw_path == "/api/playlists":
                 tracks = _library()
@@ -827,6 +870,36 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/volume":
                 ok = APP.player.set_volume(body.get("n"))
                 self._send(200 if ok else 400, {"ok": ok})
+                return
+            if path == "/api/playback":
+                output = body.get("output")
+                pb, err = APP.set_output(output)
+                self._send(200 if not err else 400, {"ok": not err, "output": pb.get("output"), "error": err, "airplay": AIRPLAY.snapshot() if AIRPLAY else {}})
+                return
+            if path == "/api/airplay":
+                err = ""
+                if AIRPLAY is None:
+                    self._send(400, {"ok": False, "error": "AirPlay not loaded"})
+                    return
+                if "name" in body:
+                    ok = AIRPLAY.set_name(body.get("name"))
+                    if not ok:
+                        err = AIRPLAY.snapshot().get("error") or "bad name"
+                    else:
+                        save_playback(airplay_name=AIRPLAY.snapshot().get("name"))
+                if "enabled" in body and not err:
+                    want = bool(body.get("enabled"))
+                    save_playback(airplay=want)
+                    ok = AIRPLAY.set_enabled(want)
+                    if not ok:
+                        err = AIRPLAY.snapshot().get("error") or "could not start AirPlay"
+                pb = load_playback()
+                self._send(200 if not err else 400, {
+                    "ok": not err,
+                    "error": err,
+                    "output": pb.get("output"),
+                    "airplay": AIRPLAY.snapshot(),
+                })
                 return
             if path == "/api/lyrics":
                 name = (body.get("name") or "").strip()
@@ -953,6 +1026,12 @@ def _boot_fleet():
     time.sleep(6)
     try:
         PEERS.fleet(probe=True, extra=_hello_extra())
+    except Exception:
+        traceback.print_exc()
+    try:
+        pb = load_playback()
+        if AIRPLAY is not None and AIRPLAY.available() and pb.get("airplay"):
+            AIRPLAY.set_enabled(True)
     except Exception:
         traceback.print_exc()
 

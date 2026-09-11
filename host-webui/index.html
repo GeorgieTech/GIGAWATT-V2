@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.0.2</div>
+      <div class="sub">S2 · V2.1.0</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -243,7 +243,14 @@ function mediaUrl(name) {
 }
 function syncTap(p, playing) {
   if (!tap.audio) return;
-  if (!p || !p.name) {
+  const browser = (last.output || "jack") === "browser";
+  const airplay = !!(last.airplay || {}).active;
+  if (browser) unlockAudio();
+  if (tap.gain) {
+    const vol = ((last.volume == null ? 100 : last.volume) / 100);
+    tap.gain.gain.value = (browser && !airplay) ? vol : 0;
+  }
+  if (airplay || !p || !p.name) {
     tap.name = "";
     tap.ok = false;
     try { tap.audio.pause(); } catch (e) {}
@@ -256,13 +263,15 @@ function syncTap(p, playing) {
     tap.audio.src = mediaUrl(p.name);
     try { tap.audio.load(); } catch (e) {}
   }
-  const ck = p.clock || {};
-  const pos = (ck.heard != null ? ck.heard : p.position) || 0;
-  try {
-    if (Math.abs((tap.audio.currentTime || 0) - pos) > 0.12) {
-      tap.audio.currentTime = pos;
-    }
-  } catch (e) {}
+  if (!browser) {
+    const ck = p.clock || {};
+    const pos = (ck.heard != null ? ck.heard : p.position) || 0;
+    try {
+      if (Math.abs((tap.audio.currentTime || 0) - pos) > 0.12) {
+        tap.audio.currentTime = pos;
+      }
+    } catch (e) {}
+  }
   if (playing) {
     const pr = tap.audio.play();
     if (pr && pr.catch) pr.catch(function () {});
@@ -419,6 +428,7 @@ let volBusy = false;
 function setVol(n) {
   n = Math.max(0, Math.min(100, Number(n)));
   viz.vol = n / 100;
+  if (tap.gain && (last.output || "jack") === "browser") tap.gain.gain.value = n / 100;
   volPending = n;
   pumpVol();
 }
@@ -440,12 +450,18 @@ $("vol").addEventListener("pointercancel", () => { volUser = false; });
 $("vol").addEventListener("touchstart", () => { volUser = true; }, { passive: true });
 $("vol").addEventListener("touchend", () => { volUser = false; });
 
+function seekTo(t) {
+  if ((last.output || "jack") === "browser" && tap.audio) {
+    try { tap.audio.currentTime = t; } catch (e) {}
+  }
+  return api("/api/seek", { seconds: t }).then(tick);
+}
 $("seek").addEventListener("click", (e) => {
   const p = last.player || {};
   if (!p.duration) return;
   const r = e.currentTarget.getBoundingClientRect();
   const t = ((e.clientX - r.left) / r.width) * p.duration;
-  api("/api/seek", { seconds: t }).then(tick);
+  seekTo(t);
 });
 $("zoom-in").addEventListener("click", (e) => { e.stopPropagation(); nudgeZoom(-1); });
 $("zoom-out").addEventListener("click", (e) => { e.stopPropagation(); nudgeZoom(1); });
@@ -460,7 +476,7 @@ $("wscroll").addEventListener("click", (e) => {
   const x = (e.clientX - r.left) / r.width;
   const win = zoomWindow();
   const pos = nowPos() - win * 0.34 + x * win;
-  api("/api/seek", { seconds: Math.max(0, Math.min(dur, pos)) }).then(tick);
+  seekTo(Math.max(0, Math.min(dur, pos)));
 });
 let pinch0 = 0, pinchZoom = 10;
 $("wscroll").addEventListener("touchstart", (e) => {
@@ -1070,24 +1086,39 @@ async function tick() {
     const st = await (await fetch("/api/status")).json();
     last = st;
     const p = st.player || {};
-    const playing = !!p.playing;
-    const paused = !!p.paused;
+    const apOn = !!(st.airplay || {}).active;
+    const playing = !!p.playing || apOn;
+    const paused = !!p.paused && !apOn;
     viz.seed = hashName(p.name || st.host || "gigawatt");
     viz.mode = playing ? "play" : paused ? "pause" : "idle";
     viz.vol = ((st.volume == null ? 100 : st.volume) / 100);
     syncTap(p, playing);
-    $("hostline").textContent = (st.model || "SHR-S2") + " · TOSLINK";
+    const ap = st.airplay || {};
+    const output = st.output || "jack";
+    let line = (st.model || "SHR-S2") + " · TOSLINK";
+    if (ap.active) line = "AirPlay · " + (ap.name || "host");
+    else if (output === "browser") line = (st.model || "SHR-S2") + " · this browser";
+    $("hostline").textContent = line;
     const sub = document.querySelector(".brand .sub");
     if (sub && st.version) sub.textContent = "S2 · V" + st.version;
     const row = (p.name && libByName[p.name]) || {};
-    $("now").textContent = p.name ? (row.title || titleOf(p.name)) : "Nothing playing";
+    if (ap.active) {
+      $("now").textContent = ap.title || "AirPlay";
+    } else {
+      $("now").textContent = p.name ? (row.title || titleOf(p.name)) : "Nothing playing";
+    }
     const artistEl = $("nowartist");
     if (artistEl) {
-      artistEl.textContent = p.name ? (row.artist || "Unknown artist") : "Pick a track in Library";
+      if (ap.active) artistEl.textContent = ap.artist || ap.client || "AirPlay";
+      else artistEl.textContent = p.name ? (row.artist || "Unknown artist") : "Pick a track in Library";
     }
     const ck = p.clock || {};
-    const heard = (ck.heard != null ? ck.heard : p.position) || 0;
-    const playback = (ck.playback != null ? ck.playback : p.playback) || heard;
+    let heard = (ck.heard != null ? ck.heard : p.position) || 0;
+    let playback = (ck.playback != null ? ck.playback : p.playback) || heard;
+    if (output === "browser" && tap.audio && p.name) {
+      heard = tap.audio.currentTime || heard;
+      playback = heard;
+    }
     $("meta").textContent = fmt(heard) + " / " + fmt(p.duration);
     applyClockSample(ck, p, false);
     paintClockStats(heard, playback, true);
@@ -1109,6 +1140,11 @@ async function tick() {
   }
 }
 
+if (tap.audio) {
+  tap.audio.addEventListener("ended", () => {
+    if ((last.output || "jack") === "browser") goNext();
+  });
+}
 window.addEventListener("resize", () => { sizeViz(); drawRekord(); });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
