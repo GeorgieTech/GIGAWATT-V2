@@ -1,0 +1,36 @@
+#!/bin/bash
+set -e
+mkdir -p /data/www /data/music
+cp /tmp/index.html /tmp/library.html /tmp/eq.html /tmp/karaoke.html /tmp/report.html /tmp/settings.html /tmp/crypt.css /tmp/server.py /tmp/player.py /tmp/library.py /tmp/wave.py /tmp/lyrics.py /tmp/research.py /tmp/report.py /tmp/essay.py /tmp/peers.py /tmp/crypt_wire.py \
+  /tmp/pin-hostname.sh /tmp/manifest.webmanifest /tmp/favicon.svg /tmp/icon.png /tmp/apple-touch-icon.png /data/www/
+rm -f /data/www/unison.py
+chmod +x /data/www/pin-hostname.sh /data/www/server.py /data/www/player.py
+chown -R RPM:RPM /data/www /data/music
+cp /tmp/crypt-web.service /tmp/crypt-pulse.service /tmp/crypt-hostname.service /etc/systemd/system/
+systemctl mask savant-startup-manager.service nginx.service || true
+timeout 8 systemctl stop nginx.service || true
+timeout 8 systemctl stop savant-startup-manager.service || true
+pkill -9 -f startupManager || true
+pkill -9 -f '/usr/local/bin/avc' || true
+pkill -9 nginx || true
+timeout 5 systemctl stop pulseaudio.service || true
+killall -9 pulseaudio || true
+sleep 1
+systemctl set-default multi-user.target
+systemctl daemon-reload
+systemctl enable crypt-hostname.service crypt-pulse.service crypt-web.service
+systemctl restart crypt-hostname.service || true
+systemctl restart crypt-pulse.service
+sleep 2
+systemctl restart crypt-web.service
+sleep 2
+echo ===== STATUS =====
+systemctl is-active crypt-web.service || true
+systemctl is-active crypt-pulse.service || true
+systemctl is-active crypt-hostname.service || true
+systemctl is-active nginx.service || true
+systemctl is-active savant-startup-manager.service || true
+hostname
+ss -tln | grep -E ':80|:443' || true
+systemctl status crypt-web.service --no-pager -l | head -30 || true
+journalctl -u crypt-web.service -n 20 --no-pager || true

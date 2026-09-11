@@ -1,0 +1,12 @@
+[Unit]
+Description=Gigawatt hostname pin (crypt-<uid>)
+After=savant-init.service network-pre.target
+Before=crypt-web.service
+
+[Service]
+Type=oneshot
+ExecStart=/data/www/pin-hostname.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

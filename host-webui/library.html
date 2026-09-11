@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#030303">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gigawatt">
+<title>Gigawatt — Library</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/crypt.css">
+</head>
+<body class="library-page">
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <h1>Gigawatt</h1>
+      <div class="sub">Library</div>
+    </div>
+    <div class="top-end">
+      <div class="hostline" id="hostline">Connecting…</div>
+      <a class="setlink" href="/settings" aria-label="Settings" title="Settings"><span></span><span></span><span></span></a>
+    </div>
+  </header>
+  <main class="page">
+    <div class="job hidden" id="job" aria-live="polite">
+      <div class="job-head">
+        <div class="job-title" id="job-title">Working</div>
+        <div class="job-pct" id="job-pct">0%</div>
+      </div>
+      <div class="job-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="job-bar">
+        <div class="job-fill" id="job-fill"></div>
+      </div>
+      <div class="job-detail" id="job-detail"></div>
+      <div class="job-stay" id="job-stay">Do not refresh or leave this page until this finishes.</div>
+    </div>
+    <section class="card lib-upload">
+      <div class="section-head">
+        <h2>Add music</h2>
+      </div>
+      <p class="hint">MP3, FLAC, Opus, OGG, WAV, M4A, or AAC. Files stay on this chassis.</p>
+      <div class="drop" id="drop">
+        <div class="drop-title">Drop files here</div>
+        <div class="drop-sub">or choose from this phone</div>
+        <label class="filebtn">Choose files<input type="file" id="file" accept="audio/*,.mp3,.flac,.opus,.ogg,.wav,.m4a,.aac" multiple hidden></label>
+      </div>
+    </section>
+    <section class="card lib-catalog">
+      <div class="section-head">
+        <h2>Catalog</h2>
+        <div class="lib-head-actions">
+          <span class="meta tight" id="disk"></span>
+          <button type="button" class="ghost" id="btn-manage">Manage</button>
+        </div>
+      </div>
+      <p class="lib-lead" id="lib-lead">Tap a track to play.</p>
+      <p class="hint" id="shelf-hint" hidden></p>
+      <div class="manage-bar hidden" id="manage-bar">
+        <p class="hint" id="manage-hint">Select tracks on this host to delete or tag. Remote rows stay read-only.</p>
+        <div class="row">
+          <button type="button" id="sel-all">Select all</button>
+          <button type="button" class="ghost" id="sel-none">Clear</button>
+          <button type="button" class="release" id="del-sel">Delete selected</button>
+        </div>
+        <div class="edit-grid">
+          <input id="bulk-artist" placeholder="Artist" autocomplete="off">
+          <input id="bulk-album" placeholder="Album" autocomplete="off">
+          <input id="bulk-genre" placeholder="Genre" list="genre-list" autocomplete="off">
+        </div>
+        <div class="row">
+          <button type="button" class="primary" id="bulk-apply">Apply to selected</button>
+          <button type="button" class="ghost" id="manage-done">Done</button>
+        </div>
+      </div>
+      <datalist id="genre-list"></datalist>
+      <div class="lib-toggle" id="toggle" role="tablist">
+        <button type="button" data-view="artists" class="on">Artists</button>
+        <button type="button" data-view="albums">Albums</button>
+        <button type="button" data-view="tracks">Tracks</button>
+        <button type="button" data-view="playlists">Playlists</button>
+      </div>
+      <input class="search" id="filter" type="search" placeholder="Search artists, albums, or tracks" autocomplete="off">
+      <nav class="crumbs" id="crumbs"></nav>
+      <div class="row" id="actions" hidden></div>
+      <ul class="tracks" id="list"></ul>
+      <div class="err" id="err"></div>
+    </section>
+  </main>
+  <div class="picker hidden" id="picker">
+    <div class="picker-card">
+      <h2>Add to playlist</h2>
+      <div id="picker-list"></div>
+      <div class="row">
+        <button type="button" class="primary" id="picker-new">New playlist</button>
+        <button type="button" class="ghost" id="picker-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <nav class="tabbar">
+    <a href="/">Playing</a>
+    <a class="on" href="/library">Library</a>
+    <a href="/karaoke">Karaoke</a>
+    <a href="/report">Report</a>
+    <a href="/eq">EQ</a>
+    <a href="/settings">Set</a>
+  </nav>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let last = { tracks: [], playlists: [], player: {} };
+let view = "artists";
+let artist = "";
+let album = "";
+let playlistId = "";
+let addTarget = "";
+let stamp = "";
+let manage = false;
+let selected = {};
+let draft = {};
+let genres = [];
+let jobBusy = false;
+let jobTimer = 0;
+const AUDIO_EXT = { ".mp3":1, ".flac":1, ".opus":1, ".ogg":1, ".wav":1, ".m4a":1, ".aac":1 };
+
+function pretty(n) {
+  if (n > 1e9) return (n/1e9).toFixed(2) + " GB";
+  if (n > 1e6) return (n/1e6).toFixed(1) + " MB";
+  return Math.round(n/1024) + " KB";
+}
+function esc(s) {
+  return String(s || "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  }[c]));
+}
+function titleOf(t) {
+  if (t && t.title) return t.title;
+  return String((t && t.name) || t || "").replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
+}
+function hashName(s) {
+  let h = 2166136261;
+  const t = String(s || "crypt");
+  for (let i = 0; i < t.length; i++) {
+    h ^= t.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) || 1;
+}
+function coverHTML(seed, letters, round) {
+  const h = hashName(seed);
+  const h1 = h % 360;
+  const h2 = (h >> 9) % 360;
+  const l1 = 11 + (h % 7);
+  const l2 = 5 + ((h >> 4) % 5);
+  const init = esc(String(letters || seed || "?").replace(/^the\s+/i, "").trim().slice(0, 2).toUpperCase() || "?");
+  return "<span class='cover" + (round ? " round" : "") + "' style='background:linear-gradient(145deg,hsl(" + h1 + ",40%," + l1 + "%),hsl(" + h2 + ",36%," + l2 + "%))'>" + init + "</span>";
+}
+function q() { return ($("filter").value || "").trim().toLowerCase(); }
+function hit(t) {
+  const s = q();
+  if (!s) return true;
+  return [t.title, t.artist, t.album, t.name, t.genre].some((v) => String(v || "").toLowerCase().indexOf(s) >= 0);
+}
+async function api(path, body) {
+  const opt = body === undefined ? { method: "POST" } : {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  };
+  const r = await fetch(path, opt);
+  return r.json();
+}
+function tracks() { return last.tracks || []; }
+function playlists() { return last.playlists || []; }
+function playingName() { return (last.player && last.player.name) || ""; }
+
+function artists() {
+  const map = {};
+  tracks().filter(hit).forEach((t) => {
+    const k = t.artist || "Unknown artist";
+    if (!map[k]) map[k] = { name: k, count: 0 };
+    map[k].count += 1;
+  });
+  return Object.keys(map).sort((a, b) => a.localeCompare(b)).map((k) => map[k]);
+}
+function albums(forArtist) {
+  const map = {};
+  tracks().filter(hit).forEach((t) => {
+    if (forArtist && t.artist !== forArtist) return;
+    const key = (t.artist || "") + "\n" + (t.album || "Unknown album");
+    if (!map[key]) map[key] = { artist: t.artist, album: t.album || "Unknown album", count: 0, key: key };
+    map[key].count += 1;
+  });
+  return Object.keys(map).sort((a, b) => a.localeCompare(b)).map((k) => map[k]);
+}
+function viewTracks() {
+  return tracks().filter((t) => {
+    if (artist && t.artist !== artist) return false;
+    if (album && t.album !== album) return false;
+    return hit(t);
+  });
+}
+function playlistTracks(pl) {
+  const by = {};
+  tracks().forEach((t) => { by[t.name] = t; });
+  return (pl.tracks || []).map((n) => by[n]).filter(Boolean);
+}
+
+function isRemote(t) {
+  if (!t) return false;
+  if (t.local === false) return true;
+  if (t.here === false && t.local !== true) return true;
+  return false;
+}
+function copyStamp(t) {
+  return (t && (t.home_stamp || t.owner)) || "shelf";
+}
+function isLocalRow(t) {
+  if (!t) return false;
+  if (isRemote(t)) return false;
+  if (t.local === false) return false;
+  if (t.here === false || t.home === false) return false;
+  return true;
+}
+function ownedSelected() {
+  return selectedNames().filter((n) => isLocalRow((last.tracks || []).filter((t) => t.name === n)[0]));
+}
+function syncManageActions() {
+  const n = ownedSelected().length;
+  const busy = !!jobBusy;
+  const del = $("del-sel");
+  const apply = $("bulk-apply");
+  if (del) del.disabled = busy || !n;
+  if (apply) apply.disabled = busy || !n;
+}
+function emptyState(title, detail) {
+  const li = document.createElement("li");
+  li.className = "empty empty-state";
+  li.innerHTML = "<span class='empty-title'>" + esc(title) + "</span>" +
+    (detail ? "<span class='empty-detail'>" + esc(detail) + "</span>" : "");
+  return li;
+}
+async function playRemote(row, requestFn) {
+  if (jobBusy) return;
+  const remote = isRemote(row);
+  if (remote) {
+    startJob("Copying", "Copying from " + copyStamp(row) + "…");
+    $("job-fill").classList.add("indeterminate");
+    const started = Date.now();
+    const pulse = setInterval(() => {
+      if (!jobBusy) return;
+      const sec = (Date.now() - started) / 1000;
+      paintJob(Math.min(88, 8 + sec * 10), "Copying", $("job-detail").textContent, "Copy-then-play — stay on this page.", "");
+      $("job-fill").classList.add("indeterminate");
+    }, 400);
+    try {
+      const res = await requestFn();
+      clearInterval(pulse);
+      $("job-fill").classList.remove("indeterminate");
+      if (res && res.ok === false) {
+        finishJob(false, "Failed", res.error || "could not copy from shelf");
+        $("err").textContent = res.error || "could not copy from shelf";
+      } else {
+        finishJob(true, "Ready", row ? (row.title || titleOf(row)) : "Playing from this host");
+        $("err").textContent = "";
+      }
+    } catch (err) {
+      clearInterval(pulse);
+      $("job-fill").classList.remove("indeterminate");
+      finishJob(false, "Failed", "Host is not answering");
+      $("err").textContent = "Host is not answering";
+    }
+    tick(true);
+    return;
+  }
+  const res = await requestFn();
+  if (res && res.ok === false) $("err").textContent = res.error || "";
+  tick();
+}
+async function playList(list, start) {
+  const names = (list || []).map((t) => t.name).filter(Boolean);
+  if (!names.length) return;
+  const name = start || names[0];
+  const row = (list || []).filter((t) => t.name === name)[0];
+  await playRemote(row, () => api("/api/play", { name: name, order: names }));
+}
+async function delName(name, ev) {
+  ev.stopPropagation();
+  if (!confirm("Delete “" + name + "” from the library?")) return;
+  await deleteNames([name]);
+}
+
+function openPicker(name, ev) {
+  if (ev) ev.stopPropagation();
+  addTarget = name;
+  const box = $("picker-list");
+  box.innerHTML = "";
+  const pls = playlists();
+  if (!pls.length) {
+    box.innerHTML = "<p class='hint'>No playlists yet.</p>";
+  } else {
+    pls.forEach((p) => {
+      const b = document.createElement("button");
+      b.textContent = p.name + " · " + p.count;
+      b.onclick = () => addTo(p.id);
+      box.appendChild(b);
+    });
+  }
+  $("picker").classList.remove("hidden");
+}
+async function addTo(pid) {
+  if (!addTarget) return;
+  const st = await api("/api/playlists", { action: "add", id: pid, name: addTarget });
+  if (!st.ok) { $("err").textContent = st.error || "could not add"; return; }
+  last.playlists = st.playlists || last.playlists;
+  $("picker").classList.add("hidden");
+  addTarget = "";
+  render();
+}
+$("picker-cancel").onclick = () => { $("picker").classList.add("hidden"); addTarget = ""; };
+$("picker-new").onclick = async () => {
+  const name = prompt("Playlist name");
+  if (!name) return;
+  const st = await api("/api/playlists", { action: "create", name: name });
+  if (!st.ok) { $("err").textContent = st.error || "could not create"; return; }
+  last.playlists = st.playlists || [];
+  if (addTarget && st.playlist) await addTo(st.playlist.id);
+  else { $("picker").classList.add("hidden"); render(); }
+};
+
+document.querySelectorAll("#toggle [data-view]").forEach((btn) => {
+  btn.onclick = () => {
+    view = btn.dataset.view;
+    artist = "";
+    album = "";
+    playlistId = "";
+    $("filter").placeholder = view === "playlists"
+      ? "Search playlists"
+      : view === "albums"
+        ? "Search albums"
+        : view === "tracks"
+          ? "Search tracks"
+          : "Search artists, albums, or tracks";
+    render();
+  };
+});
+$("filter").addEventListener("input", () => render());
+
+function crumb(label, fn) {
+  const a = document.createElement("button");
+  a.className = "crumb";
+  a.type = "button";
+  a.textContent = label;
+  if (fn) a.onclick = fn;
+  else a.disabled = true;
+  return a;
+}
+function paintCrumbs() {
+  const el = $("crumbs");
+  el.innerHTML = "";
+  if (view === "artists") {
+    el.appendChild(crumb("Artists", artist || album ? () => { artist = ""; album = ""; render(); } : null));
+    if (artist) el.appendChild(crumb(artist, album ? () => { album = ""; render(); } : null));
+    if (album) el.appendChild(crumb(album, null));
+  } else if (view === "albums") {
+    el.appendChild(crumb("Albums", album ? () => { album = ""; artist = ""; render(); } : null));
+    if (album) el.appendChild(crumb(album, null));
+  } else if (view === "playlists") {
+    el.appendChild(crumb("Playlists", playlistId ? () => { playlistId = ""; render(); } : null));
+    const pl = playlists().filter((p) => p.id === playlistId)[0];
+    if (pl) el.appendChild(crumb(pl.name, null));
+  } else {
+    el.appendChild(crumb("Tracks", null));
+  }
+}
+
+function selectedNames() {
+  return Object.keys(selected).filter((k) => selected[k]);
+}
+function fillGenres(list) {
+  if (!list || !list.length) return;
+  genres = list;
+  const el = $("genre-list");
+  el.innerHTML = "";
+  genres.forEach((g) => {
+    const o = document.createElement("option");
+    o.value = g;
+    el.appendChild(o);
+  });
+}
+function enterManage() {
+  manage = true;
+  if (view === "playlists" || (view === "artists" && !artist) || (view === "albums" && !album)) {
+    view = "tracks";
+    artist = artist || "";
+    album = album || "";
+  }
+  selected = {};
+  draft = {};
+  $("manage-bar").classList.remove("hidden");
+  $("btn-manage").textContent = "Done";
+  $("btn-manage").classList.add("on");
+  render();
+}
+async function exitManage(save) {
+  if (save && Object.keys(draft).length) {
+    const st = await api("/api/library/manage", { edits: draft });
+    if (!st.ok) {
+      $("err").textContent = st.error || "could not save tags";
+      return;
+    }
+    last.tracks = st.tracks || last.tracks;
+    last.playlists = st.playlists || last.playlists;
+  }
+  manage = false;
+  selected = {};
+  draft = {};
+  $("manage-bar").classList.add("hidden");
+  $("btn-manage").textContent = "Manage";
+  $("btn-manage").classList.remove("on");
+  tick(true);
+}
+function setDraft(name, field, value) {
+  if (!draft[name]) draft[name] = {};
+  draft[name][field] = value;
+}
+function rowManage(t) {
+  const li = document.createElement("li");
+  const local = isLocalRow(t);
+  li.className = "manage-row" + (selected[t.name] ? " picked" : "") + (local ? "" : " away");
+  if (!local) li.setAttribute("aria-readonly", "true");
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.checked = !!(local && selected[t.name]);
+  box.disabled = !local;
+  box.setAttribute("aria-label", local ? ("Select " + titleOf(t)) : (titleOf(t) + " is on another host"));
+  box.onclick = (e) => e.stopPropagation();
+  box.onchange = () => {
+    if (!local) return;
+    if (box.checked) selected[t.name] = true;
+    else delete selected[t.name];
+    li.classList.toggle("picked", box.checked);
+    $("manage-hint").textContent = ownedSelected().length + " selected";
+    syncManageActions();
+  };
+  const grow = document.createElement("div");
+  grow.className = "grow";
+  const chip = t.home_stamp ? ("<span class='home-chip " + (t.here ? "here" : "away") + "'>" + esc(t.home_stamp) + "</span>") : "";
+  grow.innerHTML = "<div class='name'>" + chip + esc(titleOf(t)) + "</div>" +
+    (local ? "" : "<div class='sub'>On another host — read only</div>");
+  const grid = document.createElement("div");
+  grid.className = "edit-grid";
+  const cur = Object.assign({ artist: t.artist || "", album: t.album || "", genre: t.genre || "" }, draft[t.name] || {});
+  ["artist", "album", "genre"].forEach((field) => {
+    const inp = document.createElement("input");
+    inp.value = cur[field] || "";
+    inp.placeholder = field[0].toUpperCase() + field.slice(1);
+    inp.autocomplete = "off";
+    inp.readOnly = !local;
+    inp.disabled = !local;
+    if (field === "genre") inp.setAttribute("list", "genre-list");
+    inp.onclick = (e) => e.stopPropagation();
+    inp.oninput = () => { if (local) setDraft(t.name, field, inp.value); };
+    grid.appendChild(inp);
+  });
+  grow.appendChild(grid);
+  li.appendChild(box);
+  li.appendChild(grow);
+  li.onclick = () => {
+    if (!local) return;
+    box.checked = !box.checked;
+    box.onchange();
+  };
+  return li;
+}
+function rowOverflow(items) {
+  const wrap = document.createElement("div");
+  wrap.className = "row-more";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "ghost more-btn";
+  btn.setAttribute("aria-label", "More");
+  btn.textContent = "⋯";
+  const menu = document.createElement("div");
+  menu.className = "row-menu hidden";
+  items.forEach((item) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = item.label;
+    b.onclick = (e) => {
+      e.stopPropagation();
+      menu.classList.add("hidden");
+      item.run(e);
+    };
+    menu.appendChild(b);
+  });
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    document.querySelectorAll(".row-menu").forEach((el) => {
+      if (el !== menu) el.classList.add("hidden");
+    });
+    menu.classList.toggle("hidden");
+  };
+  wrap.appendChild(btn);
+  wrap.appendChild(menu);
+  return wrap;
+}
+function rowTrack(t, opts) {
+  const li = document.createElement("li");
+  const remote = isRemote(t);
+  if (t.name === playingName()) li.className = "on";
+  if (remote) li.classList.add("away");
+  const bits = [t.artist, t.album].filter(Boolean);
+  const sub = bits.join(" · ");
+  const chip = t.home_stamp ? ("<span class='home-chip " + (t.here ? "here" : "away") + "'>" + esc(t.home_stamp) + "</span>") : "";
+  li.innerHTML = coverHTML(t.name || titleOf(t), titleOf(t)) +
+    "<div class='grow'><div class='name'>" + chip + esc(titleOf(t)) + "</div><div class='sub'>" + esc(sub) + "</div></div>";
+  const extra = [];
+  if (!(opts && opts.noAdd)) {
+    extra.push({ label: "Add to playlist", run: (e) => openPicker(t.name, e) });
+  }
+  if (opts && opts.remove) {
+    extra.push({ label: "Remove", run: (e) => opts.remove(t.name, e) });
+  }
+  if (extra.length) li.appendChild(rowOverflow(extra));
+  let press = 0;
+  let held = false;
+  li.addEventListener("pointerdown", (e) => {
+    if (e.button && e.button !== 0) return;
+    if (e.target.closest(".row-more")) return;
+    held = false;
+    press = setTimeout(() => {
+      press = 0;
+      held = true;
+      if (!(opts && opts.noAdd)) openPicker(t.name, e);
+    }, 520);
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((ev) => {
+    li.addEventListener(ev, () => { if (press) { clearTimeout(press); press = 0; } });
+  });
+  li.onclick = (e) => {
+    if (e.target.closest(".row-more")) return;
+    if (held) { held = false; return; }
+    playList(opts && opts.order ? opts.order : viewTracks(), t.name);
+  };
+  return li;
+}
+
+function render() {
+  document.querySelectorAll("#toggle [data-view]").forEach((btn) => {
+    btn.classList.toggle("on", btn.dataset.view === view);
+  });
+  paintCrumbs();
+  const ul = $("list");
+  const actions = $("actions");
+  ul.innerHTML = "";
+  ul.className = "tracks browse-list";
+  actions.innerHTML = "";
+  actions.hidden = true;
+  const now = playingName();
+  if (manage) {
+    ul.className = "tracks";
+    const list = viewTracks();
+    list.forEach((t) => ul.appendChild(rowManage(t)));
+    const localN = list.filter(isLocalRow).length;
+    const awayN = list.length - localN;
+    $("manage-hint").textContent = ownedSelected().length + " selected · " + localN + " on this host" +
+      (awayN ? (" · " + awayN + " remote read-only") : "");
+    syncManageActions();
+    if (!list.length) ul.appendChild(emptyState("No tracks in this view", "Clear search, or leave Manage to browse artists."));
+    return;
+  }
+
+  if (view === "artists" && !artist) {
+    const list = artists();
+    let letter = "";
+    list.forEach((a) => {
+      const L = (a.name.charAt(0) || "#").toUpperCase();
+      if (L !== letter) {
+        letter = L;
+        const h = document.createElement("li");
+        h.className = "letter";
+        h.textContent = L;
+        ul.appendChild(h);
+      }
+      const li = document.createElement("li");
+      li.innerHTML = coverHTML(a.name, a.name, true) +
+        "<span class='name'>" + esc(a.name) + "</span><span class='size'>" + a.count + "</span>";
+      li.onclick = () => { artist = a.name; album = ""; render(); };
+      ul.appendChild(li);
+    });
+    if (!list.length) {
+      ul.appendChild(tracks().length
+        ? emptyState("No artists match", "Try a different search.")
+        : emptyState("No music yet", "Drop files above, or wait for a linked shelf to share its catalog."));
+    }
+  } else if ((view === "artists" && artist && !album) || (view === "albums" && !album)) {
+    const list = albums(view === "artists" ? artist : "");
+    ul.className = "tracks album-grid";
+    list.forEach((a) => {
+      const li = document.createElement("li");
+      li.innerHTML = coverHTML((a.artist || "") + a.album, a.album) +
+        "<div class='name'>" + esc(a.album) + "</div>" +
+        "<div class='sub'>" + esc(a.artist) + " · " + a.count + "</div>";
+      li.onclick = () => { artist = a.artist; album = a.album; render(); };
+      ul.appendChild(li);
+    });
+    if (!list.length) {
+      ul.appendChild(tracks().length
+        ? emptyState("No albums match", "Try a different search or artist.")
+        : emptyState("No albums yet", "Drop files above to build the catalog."));
+    }
+  } else if (view === "playlists" && !playlistId) {
+    actions.hidden = false;
+    const mk = document.createElement("button");
+    mk.className = "primary";
+    mk.textContent = "New playlist";
+    mk.onclick = async () => {
+      const name = prompt("Playlist name");
+      if (!name) return;
+      const st = await api("/api/playlists", { action: "create", name: name });
+      if (!st.ok) { $("err").textContent = st.error || "could not create"; return; }
+      last.playlists = st.playlists || [];
+      render();
+    };
+    actions.appendChild(mk);
+    const s = q();
+    playlists().filter((p) => !s || p.name.toLowerCase().indexOf(s) >= 0).forEach((p) => {
+      const li = document.createElement("li");
+      li.innerHTML = coverHTML(p.name, p.name) +
+        "<span class='name'>" + esc(p.name) + "</span><span class='size'>" + p.count + "</span>";
+      li.appendChild(rowOverflow([
+        {
+          label: "Play",
+          run: () => {
+            const first = playlistTracks(p)[0];
+            playRemote(first, () => api("/api/play", { playlist: p.id }));
+          }
+        },
+        {
+          label: "Delete playlist",
+          run: async () => {
+            if (!confirm("Delete playlist “" + p.name + "”?")) return;
+            const st = await api("/api/playlists", { action: "delete", id: p.id });
+            last.playlists = st.playlists || [];
+            render();
+          }
+        }
+      ]));
+      li.onclick = (e) => {
+        if (e.target.closest(".row-more")) return;
+        playlistId = p.id;
+        render();
+      };
+      ul.appendChild(li);
+    });
+    if (!playlists().length) ul.appendChild(emptyState("No playlists yet", "Tap New playlist to start one, then add tracks from Artists, Albums, or Tracks."));
+  } else if (view === "playlists" && playlistId) {
+    const pl = playlists().filter((p) => p.id === playlistId)[0];
+    if (!pl) { playlistId = ""; render(); return; }
+    const list = playlistTracks(pl);
+    actions.hidden = false;
+    const play = document.createElement("button");
+    play.className = "primary";
+    play.textContent = "Play all";
+    play.disabled = !list.length;
+    play.onclick = () => playList(list);
+    const rename = document.createElement("button");
+    rename.className = "ghost";
+    rename.textContent = "Rename";
+    rename.onclick = async () => {
+      const name = prompt("Playlist name", pl.name);
+      if (!name) return;
+      const st = await api("/api/playlists", { action: "rename", id: pl.id, name: name });
+      last.playlists = st.playlists || [];
+      render();
+    };
+    actions.appendChild(play);
+    actions.appendChild(rename);
+    list.forEach((t) => {
+      ul.appendChild(rowTrack(t, {
+        order: list,
+        noAdd: true,
+        remove: async (name, ev) => {
+          ev.stopPropagation();
+          const st = await api("/api/playlists", { action: "remove", id: pl.id, name: name });
+          last.playlists = st.playlists || [];
+          render();
+        }
+      }));
+    });
+    if (!list.length) ul.appendChild(emptyState("This playlist is empty", "Add tracks from Artists, Albums, or Tracks."));
+  } else {
+    const list = viewTracks();
+    if (list.length && (artist || album)) {
+      actions.hidden = false;
+      const play = document.createElement("button");
+      play.className = "primary";
+      play.textContent = "Play all";
+      play.onclick = () => playList(list);
+      actions.appendChild(play);
+    }
+    list.forEach((t) => ul.appendChild(rowTrack(t, { order: list })));
+    if (!tracks().length) ul.appendChild(emptyState("Library is empty", "Drop files above, or wait for a linked shelf to share its catalog."));
+    else if (!list.length) ul.appendChild(emptyState("No tracks match", "Try a different search, artist, or album."));
+  }
+}
+
+const drop = $("drop");
+["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault();
+  if (!jobBusy) drop.classList.add("hot");
+}));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("hot"); }));
+drop.addEventListener("drop", e => upload(e.dataTransfer.files));
+$("file").addEventListener("change", e => upload(e.target.files));
+$("btn-manage").onclick = () => {
+  if (manage) exitManage(true);
+  else enterManage();
+};
+$("manage-done").onclick = () => exitManage(true);
+$("sel-all").onclick = () => {
+  viewTracks().filter(isLocalRow).forEach((t) => { selected[t.name] = true; });
+  render();
+};
+$("sel-none").onclick = () => { selected = {}; render(); };
+$("del-sel").onclick = async () => {
+  const names = ownedSelected();
+  if (!names.length) {
+    $("err").textContent = "Select tracks on this host to delete";
+    return;
+  }
+  if (!confirm("Delete " + names.length + " selected track" + (names.length === 1 ? "" : "s") + " from this host?")) return;
+  await deleteNames(names);
+};
+$("bulk-apply").onclick = async () => {
+  const owned = ownedSelected();
+  if (!owned.length) { $("err").textContent = "Remote tracks are read-only on this host"; return; }
+  const patch = {};
+  const artist = ($("bulk-artist").value || "").trim();
+  const album = ($("bulk-album").value || "").trim();
+  const genre = ($("bulk-genre").value || "").trim();
+  if (artist) patch.artist = artist;
+  if (album) patch.album = album;
+  if (genre) patch.genre = genre;
+  if (!Object.keys(patch).length) { $("err").textContent = "Enter artist, album, or genre"; return; }
+  const edits = {};
+  owned.forEach((n) => { edits[n] = Object.assign({}, draft[n] || {}, patch); draft[n] = edits[n]; });
+  const st = await api("/api/library/manage", { edits: edits });
+  if (!st.ok) { $("err").textContent = st.error || "could not save tags"; return; }
+  last.tracks = st.tracks || last.tracks;
+  $("manage-hint").textContent = "Updated " + (st.edited || owned.length) + " track" + (owned.length === 1 ? "" : "s");
+  $("err").textContent = "";
+  render();
+};
+
+function setJobBusy(on) {
+  jobBusy = on;
+  document.body.classList.toggle("job-busy", on);
+  drop.classList.toggle("locked", on);
+  $("file").disabled = on;
+  $("btn-manage").disabled = on;
+  $("manage-done").disabled = on;
+  syncManageActions();
+}
+function showJob() {
+  $("job").classList.remove("hidden", "done", "fail");
+}
+function hideJobLater() {
+  if (jobTimer) clearTimeout(jobTimer);
+  jobTimer = setTimeout(() => {
+    if (!jobBusy) $("job").classList.add("hidden");
+  }, 12000);
+}
+function paintJob(pct, title, detail, stay, state) {
+  const n = Math.max(0, Math.min(100, Math.round(pct)));
+  $("job-title").textContent = title;
+  $("job-pct").textContent = n + "%";
+  $("job-fill").style.width = n + "%";
+  $("job-bar").setAttribute("aria-valuenow", String(n));
+  $("job-detail").textContent = detail || "";
+  $("job-stay").textContent = stay;
+  $("job").classList.toggle("done", state === "done");
+  $("job").classList.toggle("fail", state === "fail");
+}
+function startJob(title, detail) {
+  if (jobTimer) clearTimeout(jobTimer);
+  showJob();
+  setJobBusy(true);
+  $("job-fill").classList.remove("indeterminate");
+  paintJob(0, title, detail, "Do not refresh or leave this page until this finishes.", "");
+}
+function finishJob(ok, title, detail) {
+  setJobBusy(false);
+  $("job-fill").classList.remove("indeterminate");
+  paintJob(100, title, detail, ok ? "Complete. You can leave this page." : "Finished with errors. You can leave this page.", ok ? "done" : "fail");
+  hideJobLater();
+}
+function putFile(file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload");
+    xhr.upload.onprogress = (e) => {
+      if (!e.lengthComputable) return;
+      onProgress(e.loaded, e.total, "sending");
+    };
+    xhr.upload.onload = () => onProgress(file.size || 1, file.size || 1, "saving");
+    xhr.onload = () => {
+      let j = {};
+      try { j = JSON.parse(xhr.responseText || "{}"); } catch (err) { j = {}; }
+      if (xhr.status >= 200 && xhr.status < 300 && j.ok) resolve(j);
+      else reject(new Error(j.error || ("HTTP " + xhr.status)));
+    };
+    xhr.onerror = () => reject(new Error("network"));
+    xhr.onabort = () => reject(new Error("aborted"));
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    xhr.send(fd);
+  });
+}
+async function upload(files) {
+  if (jobBusy) return;
+  const list = Array.from(files || []).filter((f) => f && f.name);
+  if (!list.length) return;
+  const totalBytes = list.reduce((s, f) => s + (f.size || 0), 0);
+  startJob("Uploading", list[0].name);
+  let saved = 0;
+  let failed = 0;
+  let doneBytes = 0;
+  for (let i = 0; i < list.length; i++) {
+    const f = list[i];
+    const ext = (f.name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
+    const label = (i + 1) + " of " + list.length + " · " + f.name;
+    if (ext && !AUDIO_EXT[ext]) {
+      failed += 1;
+      doneBytes += f.size || 0;
+      paintJob(totalBytes ? (doneBytes / totalBytes) * 100 : ((i + 1) / list.length) * 100, "Uploading", label, "Do not refresh or leave this page until this finishes.", "");
+      continue;
+    }
+    try {
+      await putFile(f, (loaded, total, phase) => {
+        const cur = Math.min(f.size || total || loaded, loaded);
+        const frac = totalBytes ? (doneBytes + cur) / totalBytes : (i + (total ? loaded / total : 0)) / list.length;
+        const stay = phase === "saving"
+          ? "Saving on the host — stay on this page."
+          : "Do not refresh or leave this page until this finishes.";
+        paintJob(frac * 100, "Uploading", label, stay, "");
+      });
+      saved += 1;
+    } catch (err) {
+      failed += 1;
+      $("err").textContent = f.name + ": " + err.message;
+    }
+    doneBytes += f.size || 0;
+    paintJob(totalBytes ? (doneBytes / totalBytes) * 100 : ((i + 1) / list.length) * 100, "Uploading", label, "Do not refresh or leave this page until this finishes.", "");
+  }
+  $("file").value = "";
+  const summary = saved + " uploaded" + (failed ? ", " + failed + " rejected" : "");
+  if (saved && !failed) finishJob(true, "Complete", summary);
+  else if (saved) finishJob(true, "Complete", summary);
+  else finishJob(false, "Failed", failed ? summary : "Nothing uploaded");
+  tick(true);
+}
+async function deleteNames(names) {
+  if (jobBusy) return;
+  const list = (names || []).filter(Boolean);
+  if (!list.length) return;
+  startJob("Deleting", list[0]);
+  let ok = 0;
+  let failed = 0;
+  for (let i = 0; i < list.length; i++) {
+    const name = list[i];
+    const label = (i + 1) + " of " + list.length + " · " + name;
+    paintJob((i / list.length) * 100, "Deleting", label, "Do not refresh or leave this page until this finishes.", "");
+    try {
+      const st = await api("/api/delete", { name: name, refresh: i === list.length - 1 });
+      if (st.ok) {
+        ok += 1;
+        last.tracks = (last.tracks || []).filter((t) => t.name !== name);
+        delete selected[name];
+        delete draft[name];
+      } else {
+        failed += 1;
+      }
+    } catch (err) {
+      failed += 1;
+    }
+    paintJob(((i + 1) / list.length) * 100, "Deleting", label, "Do not refresh or leave this page until this finishes.", "");
+  }
+  const summary = ok + " deleted" + (failed ? ", " + failed + " failed" : "");
+  if (ok && !failed) finishJob(true, "Complete", summary);
+  else if (ok) finishJob(true, "Complete", summary);
+  else finishJob(false, "Failed", summary);
+  tick(true);
+}
+window.addEventListener("beforeunload", (e) => {
+  if (!jobBusy) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
+document.querySelector(".tabbar").addEventListener("click", (e) => {
+  if (!jobBusy) return;
+  e.preventDefault();
+  e.stopPropagation();
+}, true);
+
+function applyLib(st, lib, force) {
+  last = Object.assign({}, st, lib);
+  if (lib.genres) fillGenres(lib.genres);
+  const p = st.player || last.player || {};
+  const peer = lib.peer || st.peer || {};
+  const shelves = peer.shelves || [];
+  $("hostline").textContent = p.name ? ("Now · " + titleOf({ name: p.name, title: "" })) : ((st.host || st.model || "SHR-S2") + " · TOSLINK");
+  const lead = $("lib-lead");
+  if (lead) lead.textContent = "Tap a track to play.";
+  const shelfHint = $("shelf-hint");
+  if (shelves.length) {
+    shelfHint.hidden = false;
+    shelfHint.textContent = "Linked shelf — remote tracks copy here, then play.";
+  } else {
+    shelfHint.hidden = true;
+  }
+  const d = lib.disk || st.disk || {};
+  const n = (lib.tracks || []).length;
+  const scan = lib.scanning ? " · reading tags" : "";
+  $("disk").textContent = n + " track" + (n === 1 ? "" : "s") + " · " + pretty(d.free || 0) + " free" + scan;
+  if (!jobBusy) {
+    $("err").textContent = (st.player && st.player.error) || peer.error || "";
+  }
+  const tagged = (lib.tracks || []).reduce((acc, t) => acc + (t.tagged ? 1 : 0), 0);
+  const homes = (lib.tracks || []).map((t) => (t.home_stamp || "") + (t.here ? "h" : "")).join("");
+  const next = n + ":" + tagged + ":" + (lib.scanning ? 1 : 0) + ":" + view + ":" + artist + ":" + album + ":" + playlistId + ":" + q() + ":" + playingName() + ":" + (lib.playlists || []).map((x) => x.id + x.count).join(",") + ":" + homes;
+  if (manage && !force) return;
+  if (force || next !== stamp) {
+    stamp = next;
+    render();
+  }
+}
+async function tick(force) {
+  if (jobBusy && !force) return;
+  try {
+    const st = await (await fetch("/api/status")).json();
+    if (!(last.tracks || []).length) {
+      try {
+        const local = await (await fetch("/api/library?local=1")).json();
+        applyLib(st, local, true);
+      } catch (e) {}
+    }
+    const lib = await (await fetch("/api/library")).json();
+    applyLib(st, lib, force);
+  } catch (e) {
+    $("err").textContent = "Host is not answering";
+  }
+}
+tick(true);
+setInterval(() => tick(false), 2500);
+document.addEventListener("click", () => {
+  document.querySelectorAll(".row-menu").forEach((el) => el.classList.add("hidden"));
+});
+</script>
+</body>
+</html>

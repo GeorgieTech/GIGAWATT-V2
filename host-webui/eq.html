@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#030303">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gigawatt">
+<title>Gigawatt — EQ</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/crypt.css">
+</head>
+<body class="eq-page">
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <h1>Gigawatt</h1>
+      <div class="sub">EQ</div>
+    </div>
+    <div class="top-end">
+      <div class="hostline" id="hostline">TOSLINK · 31-band</div>
+      <a class="setlink" href="/settings" aria-label="Settings" title="Settings"><span></span><span></span><span></span></a>
+    </div>
+  </header>
+  <main class="page">
+    <section class="card">
+      <div class="section-head">
+        <h2>Equalizer</h2>
+        <span class="badge" id="state">Idle</span>
+      </div>
+      <p class="hint" id="hint">31 ISO 1/3-octave bands, 20 Hz–20 kHz, constant-Q 4.32. Narrow enough to cut a room mode or mains hum without dragging the neighbors. ffmpeg on the S2, then TOSLINK. Sliders apply when you release them. Tap a gain to zero that band.</p>
+      <div class="eq-presets" id="presets"></div>
+      <p class="eq-note" id="note"></p>
+      <div class="eq-legend" id="legend">
+        <span class="bass">Bass</span>
+        <span class="lowmid">Low mid</span>
+        <span class="mid">Mid</span>
+        <span class="presence">Presence</span>
+        <span class="air">Air</span>
+      </div>
+      <div class="eq-console">
+        <div class="eq-scale" aria-hidden="true"><span>+12</span><span>0</span><span>−12</span></div>
+        <div class="eq-board" id="board"></div>
+      </div>
+      <div class="err" id="err"></div>
+      <div class="okline" id="ok"></div>
+    </section>
+  </main>
+  <nav class="tabbar">
+    <a href="/">Playing</a>
+    <a href="/library">Library</a>
+    <a href="/karaoke">Karaoke</a>
+    <a href="/report">Report</a>
+    <a class="on" href="/eq">EQ</a>
+    <a href="/settings">Set</a>
+  </nav>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let EQ_BANDS = [];
+let EQ_PRESETS = [];
+let gains = [];
+let eqTimer = null;
+let lastPlayer = {};
+
+function clamp(v) {
+  v = Number(v);
+  if (!isFinite(v)) return 0;
+  return Math.max(-12, Math.min(12, v));
+}
+function fmtGain(n) {
+  const v = clamp(n);
+  if (v > 0) return "+" + v.toFixed(v % 1 ? 1 : 0);
+  return String(v % 1 ? v.toFixed(1) : v);
+}
+function matchPreset(vals) {
+  for (let p = 0; p < EQ_PRESETS.length; p++) {
+    let ok = true;
+    for (let i = 0; i < EQ_BANDS.length; i++) {
+      if (Math.abs((vals[i] || 0) - (EQ_PRESETS[p].gains[i] || 0)) > 0.35) { ok = false; break; }
+    }
+    if (ok) return EQ_PRESETS[p].id;
+  }
+  return "";
+}
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  };
+  const r = await fetch(path, opt);
+  return r.json();
+}
+
+function paintPresets() {
+  const wrap = $("presets");
+  if (wrap.dataset.ready !== "1") {
+    wrap.innerHTML = "";
+    EQ_PRESETS.forEach((preset) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ghost";
+      btn.dataset.preset = preset.id;
+      btn.textContent = preset.name;
+      btn.title = preset.blurb;
+      btn.onclick = () => applyGains(preset.gains, true);
+      wrap.appendChild(btn);
+    });
+    wrap.dataset.ready = "1";
+  }
+  const id = matchPreset(gains);
+  wrap.querySelectorAll("button").forEach((btn) => btn.classList.toggle("on", btn.dataset.preset === id));
+  const preset = EQ_PRESETS.filter((p) => p.id === id)[0];
+  $("note").textContent = preset ? preset.blurb : "Custom — a band was moved off the selected curve. Tap a gain readout to zero that band.";
+}
+
+function paintBoard() {
+  const board = $("board");
+  if (board.dataset.ready === "1") {
+    board.querySelectorAll("input[type=range]").forEach((el, i) => {
+      if (document.activeElement !== el) el.value = String(gains[i]);
+      const gainEl = el.closest(".eq-band").querySelector(".gain");
+      if (gainEl) gainEl.textContent = fmtGain(gains[i]);
+    });
+    return;
+  }
+  board.innerHTML = "";
+  EQ_BANDS.forEach((band, i) => {
+    const col = document.createElement("div");
+    col.className = "eq-band " + (band.region || "");
+    const gain = document.createElement("button");
+    gain.type = "button";
+    gain.className = "gain";
+    gain.textContent = fmtGain(gains[i]);
+    gain.title = "Zero " + band.label;
+    gain.onclick = () => {
+      const next = gains.slice();
+      next[i] = 0;
+      applyGains(next, true);
+    };
+    const wrap = document.createElement("div");
+    wrap.className = "eq-slider";
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "-12";
+    input.max = "12";
+    input.step = "0.5";
+    input.value = String(gains[i] || 0);
+    input.setAttribute("aria-label", band.label + " Hz");
+    input.oninput = () => {
+      const next = gains.slice();
+      next[i] = Number(input.value);
+      applyGains(next, false);
+    };
+    input.onchange = () => {
+      const next = gains.slice();
+      next[i] = Number(input.value);
+      applyGains(next, true);
+    };
+    wrap.appendChild(input);
+    const hz = document.createElement("span");
+    hz.className = "hz";
+    hz.textContent = band.label;
+    col.appendChild(gain);
+    col.appendChild(wrap);
+    col.appendChild(hz);
+    board.appendChild(col);
+  });
+  board.dataset.ready = "1";
+}
+
+function applyGains(next, persist) {
+  gains = EQ_BANDS.map((_, i) => clamp(next && next[i]));
+  paintBoard();
+  paintPresets();
+  if (!persist) return;
+  persistNow();
+}
+
+function persistNow() {
+  if (eqTimer) clearTimeout(eqTimer);
+  const next = gains.slice();
+  eqTimer = setTimeout(async () => {
+    try {
+      const st = await api("/api/eq", { eq: next });
+      if (!st.ok && st.error) throw new Error(st.error);
+      $("ok").textContent = "Applied to TOSLINK";
+      $("err").textContent = "";
+    } catch (e) {
+      $("err").textContent = e.message || "EQ did not apply";
+    }
+  }, 80);
+}
+
+async function tick() {
+  try {
+    const st = await (await fetch("/api/status")).json();
+    const p = st.player || {};
+    lastPlayer = p;
+    $("hostline").textContent = p.name ? "Now · TOSLINK · 31-band" : "TOSLINK · 31-band";
+    const badge = $("state");
+    const playing = !!p.playing;
+    const paused = !!p.paused;
+    badge.className = "badge " + (playing ? "live" : paused ? "seen" : "dead");
+    badge.textContent = playing ? "Playing" : paused ? "Paused" : "Idle";
+  } catch (e) {
+    $("err").textContent = "Host is not answering";
+  }
+}
+
+async function boot() {
+  try {
+    const st = await api("/api/eq");
+    EQ_BANDS = st.bands || [];
+    EQ_PRESETS = st.presets || [];
+    if (st.q) {
+      $("hint").textContent = "31 ISO 1/3-octave bands, 20 Hz–20 kHz, constant-Q " + Number(st.q).toFixed(2) + ". Narrow enough to cut a room mode or mains hum without dragging the neighbors. ffmpeg on the S2, then TOSLINK. Sliders apply when you release them. Tap a gain to zero that band.";
+    }
+    if (!EQ_BANDS.length) throw new Error("no bands");
+    applyGains(st.eq, false);
+  } catch (e) {
+    $("err").textContent = "Host is not answering";
+  }
+  tick();
+}
+
+window.addEventListener("pagehide", () => persistNow());
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) persistNow();
+});
+boot();
+setInterval(tick, 2500);
+</script>
+</body>
+</html>

@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#030303">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gigawatt">
+<title>Gigawatt — Playing</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/crypt.css">
+</head>
+<body class="playing-page">
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <h1>Gigawatt</h1>
+      <div class="sub">S2 · V2.0.0</div>
+    </div>
+    <div class="top-end">
+      <div class="hostline" id="hostline">Connecting…</div>
+      <a class="setlink" href="/settings" aria-label="Settings" title="Settings"><span></span><span></span><span></span></a>
+    </div>
+  </header>
+  <main class="page">
+    <section class="card nowcard">
+      <div class="job hidden" id="copyjob" aria-live="polite">
+        <div class="job-head">
+          <div class="job-title" id="copy-title">Copying</div>
+          <div class="job-pct" id="copy-pct">…</div>
+        </div>
+        <div class="job-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="copy-bar">
+          <div class="job-fill indeterminate" id="copy-fill"></div>
+        </div>
+        <div class="job-detail" id="copy-detail"></div>
+        <div class="job-stay" id="copy-stay">Copy-then-play — this TOSLINK waits for the file.</div>
+      </div>
+      <div class="viz-wrap" id="vizwrap">
+        <canvas id="viz" aria-label="Album art visualizer"></canvas>
+        <audio id="tap" playsinline webkit-playsinline preload="auto"></audio>
+      </div>
+      <div class="now-block">
+        <div class="now-line">
+          <span class="live-dot" id="state" aria-label="Idle"></span>
+          <div class="now" id="now">Nothing playing</div>
+        </div>
+        <div class="now-artist" id="nowartist">Pick a track in Library</div>
+        <div class="now-meta-row">
+          <div class="meta" id="meta">0:00 / 0:00</div>
+          <button class="ghost stop-inline" id="stopbtn" type="button">Stop</button>
+        </div>
+      </div>
+      <div class="transport">
+        <button class="icon" id="prevbtn" type="button" aria-label="Previous">⟨⟨</button>
+        <button class="playbig primary" id="playbtn" type="button" aria-label="Play">Play</button>
+        <button class="icon" id="nextbtn" type="button" aria-label="Next">⟩⟩</button>
+      </div>
+      <div class="wave-scroll-wrap">
+        <canvas id="wscroll" aria-label="3-band waveform"></canvas>
+        <div class="wave-progress hidden" id="waveprog">
+          <div class="wave-progress-head">
+            <span id="wavestage">Analyzing waveform</span>
+            <span id="wavepct">0%</span>
+          </div>
+          <div class="wave-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="wavebar">
+            <div class="wave-progress-fill" id="wavefill"></div>
+          </div>
+        </div>
+      </div>
+      <div class="wave-over-wrap" id="seek">
+        <canvas id="wover" aria-label="Track overview"></canvas>
+      </div>
+      <div class="vol">Volume <input id="vol" type="range" min="0" max="100" value="100"></div>
+      <details class="clock-pro" id="clockpro">
+        <summary>Time Clock / Pro</summary>
+        <div class="clock-stats" id="clockstats">
+          <div class="clock-hero">
+            <div class="clk-delta" id="clk-off">—</div>
+            <div class="clk-delta-l" id="clk-off-l">Time Clock vs playback</div>
+          </div>
+          <div class="clock-times">
+            <div class="clock-col heard">
+              <span class="k">Time Clock</span>
+              <span class="v" id="clk-heard">0:00.000</span>
+              <span class="clk-sub">what you hear</span>
+            </div>
+            <div class="clock-col play">
+              <span class="k">Playback</span>
+              <span class="v" id="clk-play">0:00.000</span>
+              <span class="clk-sub">decoder</span>
+            </div>
+          </div>
+          <div class="clock-lane" id="clk-lane" aria-hidden="true">
+            <div class="clock-lane-span" id="clk-span"></div>
+            <div class="clock-mark heard" id="clk-mark-h"></div>
+            <div class="clock-mark play" id="clk-mark-p"></div>
+          </div>
+          <div class="clock-legend">
+            <span class="heard">Time Clock</span>
+            <span class="play">Playback</span>
+            <span id="clk-lock">idle</span>
+          </div>
+          <div class="clock-meter">
+            <div>
+              <span class="k">Word clock</span>
+              <span class="v" id="clk-rate">48.000 kHz</span>
+            </div>
+            <div>
+              <span class="k">Jitter</span>
+              <span class="v" id="clk-jit">—</span>
+            </div>
+            <div>
+              <span class="k">Steer</span>
+              <span class="v" id="clk-ppm">—</span>
+            </div>
+          </div>
+          <p class="clock-note" id="clk-note">Host Time Clock vs decoder timing</p>
+        </div>
+        <div class="wave-legend">
+          <span class="lo">Lows</span>
+          <span class="mid">Mids</span>
+          <span class="hi">Highs</span>
+          <span class="beats" id="wave-bpm">— BPM</span>
+          <span class="zoom-tools">
+            <button type="button" class="ghost zoom-btn" id="zoom-in" aria-label="Zoom in">+</button>
+            <span id="zoom-sec">10s</span>
+            <button type="button" class="ghost zoom-btn" id="zoom-out" aria-label="Zoom out">−</button>
+          </span>
+        </div>
+      </details>
+      <div class="err" id="err"></div>
+    </section>
+    <section class="card queue-card">
+      <div class="section-head">
+        <h2>Up next</h2>
+        <span class="meta tight" id="qmeta"></span>
+      </div>
+      <ol class="queue" id="queue"></ol>
+      <a class="morelink" id="qmore" href="/library" hidden></a>
+    </section>
+  </main>
+  <nav class="tabbar">
+    <a class="on" href="/">Playing</a>
+    <a href="/library">Library</a>
+    <a href="/karaoke">Karaoke</a>
+    <a href="/report">Report</a>
+    <a href="/eq">EQ</a>
+    <a href="/settings">Set</a>
+  </nav>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let last = {};
+let viz = {
+  seed: 1,
+  clock: 0,
+  lastTs: 0,
+  raf: 0,
+  vol: 1,
+  mode: "idle",
+  bars: null,
+  live: false
+};
+const tap = {
+  audio: $("tap"),
+  ctx: null,
+  analyser: null,
+  freq: null,
+  src: null,
+  gain: null,
+  name: "",
+  ok: false
+};
+
+function fmt(sec) {
+  sec = Math.max(0, sec || 0);
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m + ":" + String(s).padStart(2, "0");
+}
+function fmt3(sec) {
+  sec = Math.max(0, sec || 0);
+  const m = Math.floor(sec / 60);
+  const s = sec - m * 60;
+  return m + ":" + s.toFixed(3).padStart(6, "0");
+}
+function esc(s) {
+  return String(s || "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  }[c]));
+}
+function titleOf(name) {
+  return String(name || "").replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
+}
+function hashName(s) {
+  let h = 2166136261;
+  const t = String(s || "crypt");
+  for (let i = 0; i < t.length; i++) {
+    h ^= t.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) || 1;
+}
+async function api(path, body) {
+  const opt = body === undefined ? { method: "POST" } : {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  };
+  const r = await fetch(path, opt);
+  return r.json();
+}
+function unlockAudio() {
+  if (!tap.audio) return false;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return false;
+  if (!tap.ctx) {
+    tap.ctx = new AC();
+    tap.fft = tap.ctx.createAnalyser();
+    tap.fft.fftSize = 1024;
+    tap.fft.smoothingTimeConstant = 0.68;
+    tap.freq = new Uint8Array(tap.fft.frequencyBinCount);
+    tap.waveN = tap.ctx.createAnalyser();
+    tap.waveN.fftSize = 2048;
+    tap.waveN.smoothingTimeConstant = 0.12;
+    tap.wave = new Float32Array(tap.waveN.fftSize);
+    tap.gain = tap.ctx.createGain();
+    tap.gain.gain.value = 0;
+    tap.src = tap.ctx.createMediaElementSource(tap.audio);
+    tap.src.connect(tap.fft);
+    tap.src.connect(tap.waveN);
+    tap.fft.connect(tap.gain);
+    tap.gain.connect(tap.ctx.destination);
+  }
+  if (tap.ctx.state === "suspended") tap.ctx.resume();
+  return true;
+}
+function mediaUrl(name) {
+  return "/api/media?name=" + encodeURIComponent(name);
+}
+function syncTap(p, playing) {
+  if (!tap.audio) return;
+  if (!p || !p.name) {
+    tap.name = "";
+    tap.ok = false;
+    try { tap.audio.pause(); } catch (e) {}
+    return;
+  }
+  unlockAudio();
+  if (tap.name !== p.name) {
+    tap.name = p.name;
+    tap.ok = false;
+    tap.audio.src = mediaUrl(p.name);
+    try { tap.audio.load(); } catch (e) {}
+  }
+  const ck = p.clock || {};
+  const pos = (ck.heard != null ? ck.heard : p.position) || 0;
+  try {
+    if (Math.abs((tap.audio.currentTime || 0) - pos) > 0.12) {
+      tap.audio.currentTime = pos;
+    }
+  } catch (e) {}
+  if (playing) {
+    const pr = tap.audio.play();
+    if (pr && pr.catch) pr.catch(function () {});
+  } else {
+    try { tap.audio.pause(); } catch (e) {}
+  }
+}
+let libByName = {};
+let libAt = 0;
+let copyBusy = false;
+let copyTimer = 0;
+let copyHide = 0;
+let copyStarted = 0;
+
+function isRemote(t) {
+  if (!t) return false;
+  if (t.local === false) return true;
+  if (t.here === false && t.local !== true) return true;
+  return false;
+}
+function copyStamp(t) {
+  return (t && (t.home_stamp || t.owner)) || "shelf";
+}
+async function ensureLib(force) {
+  const now = Date.now();
+  if (!force && now - libAt < 12000 && Object.keys(libByName).length) return;
+  try {
+    const lib = await (await fetch("/api/library")).json();
+    const map = {};
+    (lib.tracks || []).forEach((t) => { if (t && t.name) map[t.name] = t; });
+    libByName = map;
+    libAt = now;
+  } catch (e) {}
+}
+function paintCopyJob(pct, title, detail, stay, state) {
+  const el = $("copyjob");
+  if (!el) return;
+  const n = Math.max(0, Math.min(100, Math.round(pct)));
+  $("copy-title").textContent = title;
+  $("copy-pct").textContent = state === "wait" ? "…" : (n + "%");
+  $("copy-fill").style.width = n + "%";
+  $("copy-fill").classList.toggle("indeterminate", state === "wait");
+  $("copy-bar").setAttribute("aria-valuenow", String(n));
+  $("copy-detail").textContent = detail || "";
+  $("copy-stay").textContent = stay;
+  el.classList.toggle("done", state === "done");
+  el.classList.toggle("fail", state === "fail");
+}
+function showCopyJob(stamp, track) {
+  const el = $("copyjob");
+  if (!el) return;
+  if (copyHide) { clearTimeout(copyHide); copyHide = 0; }
+  copyBusy = true;
+  copyStarted = Date.now();
+  el.classList.remove("hidden", "done", "fail");
+  const label = track ? (track.title || titleOf(track.name)) : "";
+  paintCopyJob(8, "Copying", "Copying from " + stamp + (label ? (" · " + label) : "") + "…", "Copy-then-play — this TOSLINK waits for the file.", "wait");
+  if (copyTimer) clearInterval(copyTimer);
+  copyTimer = setInterval(() => {
+    if (!copyBusy) return;
+    const sec = (Date.now() - copyStarted) / 1000;
+    const pct = Math.min(88, 8 + sec * 10);
+    paintCopyJob(pct, "Copying", $("copy-detail").textContent, "Copy-then-play — this TOSLINK waits for the file.", "wait");
+  }, 400);
+}
+function finishCopyJob(ok, detail) {
+  copyBusy = false;
+  if (copyTimer) { clearInterval(copyTimer); copyTimer = 0; }
+  const el = $("copyjob");
+  if (!el) return;
+  paintCopyJob(100, ok ? "Ready" : "Failed", detail || (ok ? "Playing from this host." : "could not copy from shelf"), ok ? "Complete." : "Finished with errors.", ok ? "done" : "fail");
+  copyHide = setTimeout(() => {
+    if (!copyBusy) el.classList.add("hidden");
+  }, ok ? 1600 : 8000);
+}
+async function withCopyFeedback(track, requestFn) {
+  const remote = isRemote(track);
+  let shown = remote;
+  let late = 0;
+  if (remote) showCopyJob(copyStamp(track), track);
+  else {
+    late = setTimeout(() => {
+      if (track && isRemote(track)) {
+        shown = true;
+        showCopyJob(copyStamp(track), track);
+      }
+    }, 400);
+  }
+  try {
+    const res = await requestFn();
+    if (late) clearTimeout(late);
+    if (shown) {
+      if (res && res.ok === false) finishCopyJob(false, res.error || "could not copy from shelf");
+      else finishCopyJob(true, track ? (track.title || titleOf(track.name)) : "");
+    }
+    return res;
+  } catch (e) {
+    if (late) clearTimeout(late);
+    if (shown) finishCopyJob(false, "Host is not answering");
+    throw e;
+  }
+}
+async function toggle() {
+  unlockAudio();
+  const p = last.player || {};
+  if (p.playing) await api("/api/pause");
+  else if (p.paused) await api("/api/resume");
+  else if (p.name) {
+    await ensureLib();
+    await withCopyFeedback(libByName[p.name], () => api("/api/play", { name: p.name }));
+  } else if ((last.count || 0) > 0) {
+    await ensureLib();
+    const nxt = (last.queue || [])[0];
+    await withCopyFeedback(nxt && libByName[nxt.name], () => api("/api/next"));
+  }
+  tick();
+}
+async function playName(name) {
+  unlockAudio();
+  await ensureLib();
+  await withCopyFeedback(libByName[name], () => api("/api/play", { name: name }));
+  tick();
+}
+async function goPrev() {
+  unlockAudio();
+  await api("/api/prev");
+  tick();
+}
+async function goNext() {
+  unlockAudio();
+  await ensureLib();
+  const nxt = (last.queue || [])[0];
+  await withCopyFeedback(nxt && libByName[nxt.name], () => api("/api/next"));
+  tick();
+}
+async function goStop() {
+  await api("/api/stop");
+  tick();
+}
+if ($("prevbtn")) $("prevbtn").onclick = goPrev;
+if ($("nextbtn")) $("nextbtn").onclick = goNext;
+if ($("stopbtn")) $("stopbtn").onclick = goStop;
+if ($("playbtn")) $("playbtn").onclick = toggle;
+const clockPro = $("clockpro");
+if (clockPro) {
+  clockPro.addEventListener("toggle", () => {
+    document.body.classList.toggle("pro-open", clockPro.open);
+    sizeViz();
+  });
+}
+let volUser = false;
+let volPending = null;
+let volBusy = false;
+function setVol(n) {
+  n = Math.max(0, Math.min(100, Number(n)));
+  viz.vol = n / 100;
+  volPending = n;
+  pumpVol();
+}
+function pumpVol() {
+  if (volBusy || volPending == null) return;
+  const n = volPending;
+  volPending = null;
+  volBusy = true;
+  api("/api/volume", { n: n }).finally(() => {
+    volBusy = false;
+    if (volPending != null) pumpVol();
+  });
+}
+$("vol").addEventListener("input", (e) => setVol(e.target.value));
+$("vol").addEventListener("change", (e) => setVol(e.target.value));
+$("vol").addEventListener("pointerdown", () => { volUser = true; });
+$("vol").addEventListener("pointerup", () => { volUser = false; });
+$("vol").addEventListener("pointercancel", () => { volUser = false; });
+$("vol").addEventListener("touchstart", () => { volUser = true; }, { passive: true });
+$("vol").addEventListener("touchend", () => { volUser = false; });
+
+$("seek").addEventListener("click", (e) => {
+  const p = last.player || {};
+  if (!p.duration) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  const t = ((e.clientX - r.left) / r.width) * p.duration;
+  api("/api/seek", { seconds: t }).then(tick);
+});
+$("zoom-in").addEventListener("click", (e) => { e.stopPropagation(); nudgeZoom(-1); });
+$("zoom-out").addEventListener("click", (e) => { e.stopPropagation(); nudgeZoom(1); });
+$("wscroll").addEventListener("wheel", (e) => {
+  e.preventDefault();
+  nudgeZoom(e.deltaY > 0 ? 1 : -1);
+}, { passive: false });
+$("wscroll").addEventListener("click", (e) => {
+  const dur = playClock.duration || 0;
+  if (!dur || !rw.n) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width;
+  const win = zoomWindow();
+  const pos = nowPos() - win * 0.34 + x * win;
+  api("/api/seek", { seconds: Math.max(0, Math.min(dur, pos)) }).then(tick);
+});
+let pinch0 = 0, pinchZoom = 10;
+$("wscroll").addEventListener("touchstart", (e) => {
+  if (e.touches.length === 2) {
+    const a = e.touches[0], b = e.touches[1];
+    pinch0 = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    pinchZoom = zoomWindow();
+  }
+}, { passive: true });
+$("wscroll").addEventListener("touchmove", (e) => {
+  if (e.touches.length !== 2 || !pinch0) return;
+  const a = e.touches[0], b = e.touches[1];
+  const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  setZoomSec(pinchZoom * (pinch0 / Math.max(8, d)));
+}, { passive: true });
+let playClock = {
+  at: 0, heard: 0, playback: 0, pos: 0, playing: false, duration: 0, name: "",
+  latency_ms: 0, buffer_ms: 0, sink_ms: 0, paplay_ms: 90, locked: false,
+  jitter_ms: 0, ppm: 0, rate: 48000, phase: "idle"
+};
+let clockDomAt = 0;
+function applyClockSample(ck, p, snap) {
+  const now = performance.now();
+  const playing = !!p.playing;
+  const name = p.name || "";
+  const heard = (ck.heard != null ? ck.heard : p.position) || 0;
+  const playback = (ck.playback != null ? ck.playback : p.playback) || heard;
+  const dur = p.duration || 0;
+  const next = {
+    at: now,
+    heard: heard,
+    playback: playback,
+    pos: heard,
+    playing: playing,
+    duration: dur,
+    name: name,
+    latency_ms: ck.latency_ms || 0,
+    buffer_ms: ck.buffer_ms || 0,
+    sink_ms: ck.sink_ms || 0,
+    paplay_ms: ck.paplay_ms || 90,
+    locked: !!ck.locked,
+    jitter_ms: ck.jitter_ms || 0,
+    ppm: ck.ppm || 0,
+    rate: ck.rate || 48000,
+    phase: ck.phase || (playing && ck.locked ? "locked" : playing ? "locking" : name ? "frozen" : "idle")
+  };
+  const same = playClock.name === name && playClock.playing && playing;
+  if (same && !snap) {
+    const predH = nowClock("heard");
+    const predP = nowClock("playback");
+    const errH = heard - predH;
+    const errP = playback - predP;
+    if (Math.abs(errH) < 0.28 && Math.abs(errP) < 0.28) {
+      next.heard = predH + errH * 0.16;
+      next.playback = predP + errP * 0.16;
+      next.pos = next.heard;
+    }
+  }
+  playClock = next;
+}
+let rw = { name: "", n: 0, l: [], m: [], h: [], grid: null, dur: 0, analyzing: false, timer: 0, zoomSec: 10, progress: 0, stage: "", progTimer: 0 };
+const ZOOM_STEPS = [2, 3, 4, 6, 8, 10, 12, 16, 24, 32, 48];
+function zoomWindow() {
+  const dur = playClock.duration || 12;
+  const z = rw.zoomSec || 10;
+  return Math.max(2, Math.min(Math.max(2, dur), z));
+}
+function setZoomSec(sec) {
+  const dur = playClock.duration || 48;
+  rw.zoomSec = Math.max(2, Math.min(Math.min(48, dur), sec));
+  const lab = $("zoom-sec");
+  if (lab) lab.textContent = Math.round(rw.zoomSec) + "s";
+}
+function nudgeZoom(dir) {
+  const cur = zoomWindow();
+  let idx = 0;
+  for (let i = 0; i < ZOOM_STEPS.length; i++) {
+    if (ZOOM_STEPS[i] <= cur + 0.05) idx = i;
+  }
+  idx = Math.max(0, Math.min(ZOOM_STEPS.length - 1, idx + dir));
+  setZoomSec(ZOOM_STEPS[idx]);
+}
+function nowPos() {
+  return nowClock("heard");
+}
+function nowClock(field) {
+  const base = playClock[field] != null ? playClock[field] : (playClock.pos || 0);
+  if (!playClock.playing) return base || 0;
+  const p = base + (performance.now() - playClock.at) / 1000;
+  return Math.max(0, Math.min(playClock.duration || p, p));
+}
+function paintClockStats(heard, playback, force) {
+  if (!$("clk-heard")) return;
+  const now = performance.now();
+  if (!force && now - clockDomAt < 90) return;
+  clockDomAt = now;
+  $("clk-heard").textContent = fmt3(heard);
+  $("clk-play").textContent = fmt3(playback);
+  const off = Math.max(0, Math.round((playback - heard) * 1000));
+  const delta = $("clk-off");
+  const lab = $("clk-off-l");
+  if (!playClock.name) {
+    delta.textContent = "—";
+    delta.className = "clk-delta";
+    lab.textContent = "Time Clock vs playback";
+  } else if (off <= 20) {
+    delta.textContent = "in sync";
+    delta.className = "clk-delta sync";
+    lab.textContent = "Time Clock matches playback";
+  } else {
+    delta.textContent = off + " ms";
+    delta.className = "clk-delta";
+    lab.textContent = "behind playback";
+  }
+  const lock = $("clk-lock");
+  const phase = playClock.phase || "idle";
+  const kinds = { locked: "lock", locking: "loose", warmup: "warm", frozen: "loose", idle: "loose" };
+  lock.textContent = phase;
+  lock.className = kinds[phase] || "loose";
+  const win = Math.max(600, off * 1.8, 1);
+  const gap = off / win;
+  const start = (1 - gap) * 0.5;
+  const end = start + gap;
+  const span = $("clk-span");
+  const mh = $("clk-mark-h");
+  const mp = $("clk-mark-p");
+  if (span && mh && mp) {
+    const left = (start * 100).toFixed(2);
+    const width = Math.max(0.8, gap * 100).toFixed(2);
+    span.style.left = left + "%";
+    span.style.width = width + "%";
+    mh.style.left = "calc(" + left + "% - 2px)";
+    mp.style.left = "calc(" + (end * 100).toFixed(2) + "% - 3px)";
+  }
+  const rate = playClock.rate || 48000;
+  const jit = playClock.jitter_ms || 0;
+  const ppm = playClock.ppm || 0;
+  if ($("clk-rate")) $("clk-rate").textContent = (rate / 1000).toFixed(3) + " kHz";
+  if ($("clk-jit")) $("clk-jit").textContent = playClock.name ? jit.toFixed(2) + " ms" : "—";
+  if ($("clk-ppm")) {
+    $("clk-ppm").textContent = playClock.playing
+      ? (ppm >= 0 ? "+" : "") + ppm.toFixed(1) + " ppm"
+      : "—";
+  }
+  const buf = playClock.buffer_ms || 0;
+  const sink = playClock.sink_ms || 0;
+  const pap = playClock.paplay_ms || 90;
+  $("clk-note").textContent = playClock.name
+    ? ("Path delay " + off + " ms · buffer " + Math.round(buf) + " ms · TOSLINK " + Math.round(sink) + " ms · paplay " + pap + " ms")
+    : "Cream is Time Clock (what TOSLINK is emitting). Ember is decoder playback.";
+}
+function showWaveProgress(on, pct, stage) {
+  const el = $("waveprog");
+  if (!el) return;
+  if (rw.progTimer) {
+    clearTimeout(rw.progTimer);
+    rw.progTimer = 0;
+  }
+  if (!on) {
+    el.classList.add("hidden");
+    el.classList.remove("done");
+    return;
+  }
+  const n = Math.max(0, Math.min(100, Math.round(pct || 0)));
+  el.classList.remove("hidden");
+  el.classList.toggle("done", stage === "Complete" || n >= 100);
+  $("wavestage").textContent = stage || "Analyzing waveform";
+  $("wavepct").textContent = n + "%";
+  $("wavefill").style.width = n + "%";
+  $("wavebar").setAttribute("aria-valuenow", String(n));
+}
+function loadWave(name) {
+  if (!name) {
+    rw.name = "";
+    rw.n = 0;
+    rw.l = []; rw.m = []; rw.h = [];
+    rw.grid = null;
+    rw.dur = 0;
+    setWaveBpm(null);
+    rw.analyzing = false;
+    rw.progress = 0;
+    showWaveProgress(false);
+    return;
+  }
+  if (rw.name === name && rw.n) return;
+  if (rw.name !== name) {
+    if (rw.timer) clearTimeout(rw.timer);
+    rw.name = name;
+    rw.n = 0;
+    rw.l = []; rw.m = []; rw.h = [];
+    rw.grid = null;
+    rw.dur = 0;
+    setWaveBpm(null);
+    rw.analyzing = true;
+    rw.progress = 0;
+    rw.stage = "Starting";
+    showWaveProgress(true, 1, "Starting");
+  }
+  fetch("/api/wave?name=" + encodeURIComponent(name)).then((r) => r.json()).then((data) => {
+    if (rw.name !== name) return;
+    if (data && data.ok && data.l && data.l.length) {
+      rw.l = data.l; rw.m = data.m; rw.h = data.h;
+      rw.n = data.n || data.l.length;
+      rw.grid = data.grid || null;
+      rw.dur = data.dur || 0;
+      if (rw.dur && !playClock.duration) playClock.duration = rw.dur;
+      setWaveBpm(rw.grid);
+      rw.analyzing = false;
+      rw.progress = 100;
+      showWaveProgress(true, 100, "Complete");
+      rw.progTimer = setTimeout(() => showWaveProgress(false), 1400);
+    } else if (data && data.analyzing) {
+      rw.analyzing = true;
+      rw.progress = data.progress || 0;
+      rw.stage = data.stage || "Analyzing waveform";
+      showWaveProgress(true, rw.progress, rw.stage);
+      if (rw.timer) clearTimeout(rw.timer);
+      rw.timer = setTimeout(() => {
+        if (rw.name === name) loadWave(name);
+      }, 400);
+    } else {
+      rw.analyzing = false;
+      showWaveProgress(false);
+    }
+  }).catch(() => {
+    if (rw.name === name) {
+      rw.analyzing = false;
+      showWaveProgress(false);
+    }
+  });
+}
+$("viz").addEventListener("click", () => { unlockAudio(); toggle(); });
+document.addEventListener("pointerdown", unlockAudio);
+tap.audio.addEventListener("playing", () => { tap.ok = true; });
+tap.audio.addEventListener("error", () => { tap.ok = false; });
+
+function sizeViz() {
+  const c = $("viz");
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = c.clientWidth || 320;
+  const h = c.clientHeight || 200;
+  const tw = Math.max(1, Math.floor(w * dpr));
+  const th = Math.max(1, Math.floor(h * dpr));
+  if (c.width !== tw) c.width = tw;
+  if (c.height !== th) c.height = th;
+}
+
+function fftLevels(nBars) {
+  if (!tap.fft || !tap.freq || !tap.ok) return null;
+  tap.fft.getByteFrequencyData(tap.freq);
+  const n = tap.freq.length;
+  let energy = 0;
+  const out = new Float32Array(nBars);
+  const minB = 1;
+  const usable = Math.max(1, n - minB);
+  for (let i = 0; i < nBars; i++) {
+    const a = minB + Math.floor(Math.pow(i / nBars, 1.55) * usable);
+    const b = minB + Math.floor(Math.pow((i + 1) / nBars, 1.55) * usable);
+    const lo = Math.min(a, n - 1);
+    const hi = Math.max(lo + 1, Math.min(n, b));
+    let s = 0;
+    for (let k = lo; k < hi; k++) s += tap.freq[k];
+    const v = (s / (hi - lo)) / 255;
+    out[i] = v;
+    energy += v;
+  }
+  return out;
+}
+
+function drawViz(ts) {
+  viz.raf = requestAnimationFrame(drawViz);
+  const c = $("viz");
+  const ctx = c.getContext("2d");
+  if (!ctx) return;
+  sizeViz();
+  const w = c.width;
+  const h = c.height;
+  const dt = viz.lastTs ? Math.min(0.05, (ts - viz.lastTs) / 1000) : 0.016;
+  viz.lastTs = ts;
+  if (viz.mode === "play") viz.clock += dt;
+  else if (viz.mode === "idle") viz.clock += dt * 0.18;
+
+  const bars = 48;
+  if (!viz.bars || viz.bars.length !== bars) viz.bars = new Float32Array(bars);
+  const live = fftLevels(bars);
+  viz.live = !!live && viz.mode === "play";
+  const seed = viz.seed;
+  const t = viz.clock;
+  let energy = 0.08;
+  for (let i = 0; i < bars; i++) {
+    let target;
+    if (live) {
+      target = Math.pow(live[i], 0.85);
+    } else if (viz.mode === "pause") {
+      target = viz.bars[i] * 0.985;
+    } else {
+      const mid = (bars - 1) / 2;
+      const bass = 1 - Math.abs(i - mid) / mid * 0.72;
+      const n1 = 0.5 + 0.5 * Math.sin(t * (1.15 + (seed % 5) * 0.13) + i * 0.37);
+      const n2 = 0.5 + 0.5 * Math.sin(t * (2.4 + (i % 7) * 0.11) + seed * 0.01 + i * 0.19);
+      target = (0.18 + 0.5 * n1 * n2) * bass * (viz.mode === "play" ? 0.28 : 0.1);
+    }
+    const mix = live ? 0.42 : 0.22;
+    viz.bars[i] = viz.bars[i] * (1 - mix) + target * mix;
+    energy += viz.bars[i];
+  }
+  energy = Math.max(0.06, Math.min(1, energy / bars * (live ? 2.2 : 1)));
+  const gap = Math.max(1, w * 0.006);
+  const bw = (w - gap * (bars + 1)) / bars;
+
+  ctx.clearRect(0, 0, w, h);
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, "rgba(255,43,43,0.16)");
+  g.addColorStop(0.45, "rgba(18,18,18,0.4)");
+  g.addColorStop(1, "rgba(3,3,3,0.98)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+
+  const cx = w / 2;
+  const cy = h * 0.58;
+  const rg = ctx.createRadialGradient(cx, cy, 4, cx, cy, h * 0.7);
+  rg.addColorStop(0, "rgba(255,255,255," + (0.08 + energy * 0.18) + ")");
+  rg.addColorStop(0.4, "rgba(255,43,43," + (0.10 + energy * 0.16) + ")");
+  rg.addColorStop(1, "rgba(3,3,3,0)");
+  ctx.fillStyle = rg;
+  ctx.fillRect(0, 0, w, h);
+
+  for (let i = 0; i < bars; i++) {
+    const amp = Math.max(0.04, viz.bars[i]);
+    const bh = Math.max(h * 0.04, amp * h * 0.9);
+    const x = gap + i * (bw + gap);
+    const y = h - bh - h * 0.08;
+    const bar = ctx.createLinearGradient(0, y, 0, h);
+    bar.addColorStop(0, "#ffffff");
+    bar.addColorStop(0.45, "#ff6b6b");
+    bar.addColorStop(1, "#5a0000");
+    ctx.fillStyle = bar;
+    ctx.globalAlpha = 0.62 + energy * 0.38;
+    ctx.fillRect(x, y, Math.max(1, bw), bh);
+  }
+  ctx.globalAlpha = 1;
+  drawRekord();
+}
+
+function sizeCanvas(id, cssH) {
+  const c = $(id);
+  if (!c) return null;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = c.clientWidth || 320;
+  const h = cssH || c.clientHeight || 80;
+  const tw = Math.max(1, Math.floor(w * dpr));
+  const th = Math.max(1, Math.floor(h * dpr));
+  if (c.width !== tw) c.width = tw;
+  if (c.height !== th) c.height = th;
+  return { c: c, ctx: c.getContext("2d"), w: tw, h: th, dpr: dpr };
+}
+function peakRange(arr, a, b) {
+  let m = 0;
+  const n = arr.length;
+  if (a < 0) a = 0;
+  if (b > n) b = n;
+  if (b <= a) {
+    const i = Math.max(0, Math.min(n - 1, a));
+    return arr[i] || 0;
+  }
+  for (let i = a; i < b; i++) {
+    const v = arr[i] || 0;
+    if (v > m) m = v;
+  }
+  return m;
+}
+function setWaveBpm(grid) {
+  const el = $("wave-bpm");
+  if (!el) return;
+  const bpm = grid && grid.bpm;
+  if (!bpm) {
+    el.textContent = "— BPM";
+    el.classList.remove("on");
+    return;
+  }
+  el.textContent = bpm.toFixed(1) + " BPM";
+  el.classList.add("on");
+}
+function drawBeatGrid(ctx, w, h, dpr, t0, t1, dur, onlyDown) {
+  const g = rw.grid;
+  if (!g || !g.bpm || g.bpm < 40 || !dur) return;
+  const period = 60 / g.bpm;
+  if (period <= 0) return;
+  const bar = g.bar || 4;
+  const beat0 = g.beat0 || 0;
+  const span = t1 - t0;
+  if (span <= 0) return;
+  const pxBeat = (period / span) * w;
+  if (pxBeat < 4 && !onlyDown) onlyDown = true;
+  if (pxBeat < 2 && onlyDown) {
+    const pxBar = pxBeat * bar;
+    if (pxBar < 5) return;
+  }
+  let i = Math.ceil((t0 - beat0) / period - 1e-6);
+  if (i < 0) i = 0;
+  const showNum = !onlyDown && span <= 16 && pxBeat >= 18;
+  ctx.save();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.font = (9 * dpr) + "px Outfit, sans-serif";
+  let drawn = 0;
+  for (; drawn < 240; drawn++, i++) {
+    const t = beat0 + i * period;
+    if (t > t1 + period * 0.05) break;
+    const x = ((t - t0) / span) * w;
+    if (x < -2 || x > w + 2) continue;
+    const down = (i % bar) === 0;
+    if (onlyDown && !down) continue;
+    const x0 = Math.round(x);
+    const wi = down ? Math.max(2, dpr) : Math.max(1, dpr);
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.fillRect(x0, 0, wi + Math.max(1, dpr), h);
+    ctx.fillStyle = down ? "rgba(243,230,200,0.82)" : "rgba(196,160,110,0.48)";
+    ctx.fillRect(x0, 0, wi, h);
+    if (showNum && down) {
+      ctx.fillStyle = "rgba(243,230,200,0.58)";
+      ctx.fillText(String(1 + i / bar), Math.round(x) + 3 * dpr, 3 * dpr);
+    }
+  }
+  ctx.restore();
+}
+function stackCol(ctx, x, bw, mid, maxH, lo, md, hi) {
+  lo = Math.max(0, lo || 0);
+  md = Math.max(0, md || 0);
+  hi = Math.max(0, hi || 0);
+  let hLo = (lo / 255) * maxH * 0.46;
+  let hMid = (md / 255) * maxH * 0.34;
+  let hHi = (hi / 255) * maxH * 0.40;
+  if (hi > 18) hHi = Math.max(hHi, 2);
+  const body = hLo + hMid;
+  if (body + hHi > maxH && body > 0) {
+    const k = Math.max(0.2, (maxH - hHi) / body);
+    hLo *= k;
+    hMid *= k;
+  }
+  if (hLo + hMid + hHi < 0.45) return;
+  const xi = Math.floor(x);
+  const wi = Math.max(1, Math.ceil(bw));
+  ctx.fillStyle = "#2f6bff";
+  ctx.fillRect(xi, mid - hLo, wi, hLo);
+  ctx.fillRect(xi, mid, wi, hLo);
+  ctx.fillStyle = "#e08a3a";
+  ctx.fillRect(xi, mid - hLo - hMid, wi, hMid);
+  ctx.fillRect(xi, mid + hLo, wi, hMid);
+  if (hHi >= 0.6) {
+    ctx.fillStyle = "#f6f1e4";
+    ctx.fillRect(xi, mid - hLo - hMid - hHi, wi, hHi);
+    ctx.fillRect(xi, mid + hLo + hMid, wi, hHi);
+  }
+}
+function drawRekord() {
+  const scroll = sizeCanvas("wscroll");
+  const over = sizeCanvas("wover");
+  if (!scroll || !over) return;
+  const pos = nowPos();
+  const dur = playClock.duration || rw.dur || 0;
+  const playback = nowClock("playback");
+  paintScroll(scroll, pos, dur);
+  paintOver(over, pos, dur);
+  if ($("meta")) $("meta").textContent = fmt(pos) + " / " + fmt(dur);
+  paintClockStats(pos, playback);
+}
+function paintScroll(s, pos, dur) {
+  const ctx = s.ctx, w = s.w, h = s.h;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#09070a";
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "rgba(196,92,38,0.18)";
+  ctx.fillRect(0, h / 2, w, Math.max(1, s.dpr));
+  if (!rw.n) {
+    if (!rw.analyzing) {
+      ctx.fillStyle = "rgba(154,141,124,0.9)";
+      ctx.font = (11 * s.dpr) + "px Outfit, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("Play a track to build its 3-band waveform", w / 2, h / 2 + 4 * s.dpr);
+    }
+    return;
+  }
+  const n = rw.n;
+  const win = zoomWindow();
+  const cols = Math.max(8, (win / Math.max(0.01, dur || win)) * n);
+  const midCol = (dur > 0) ? (pos / dur) * n : 0;
+  const left = midCol - cols * 0.34;
+  const mid = h / 2;
+  const maxH = h * 0.50;
+  const srcPerPx = cols / w;
+  if (srcPerPx >= 1) {
+    for (let x = 0; x < w; x++) {
+      const a = Math.floor(left + x * srcPerPx);
+      const b = Math.floor(left + (x + 1) * srcPerPx);
+      stackCol(ctx, x, 1, mid, maxH, peakRange(rw.l, a, b), peakRange(rw.m, a, b), peakRange(rw.h, a, b));
+    }
+  } else {
+    const bw = w / cols;
+    const nsrc = Math.ceil(cols);
+    for (let c = 0; c < nsrc; c++) {
+      const i = Math.floor(left + c);
+      if (i < 0 || i >= n) continue;
+      stackCol(ctx, c * bw, bw + 0.5, mid, maxH, rw.l[i] || 0, rw.m[i] || 0, rw.h[i] || 0);
+    }
+  }
+  const t0 = (dur > 0) ? (left / n) * dur : 0;
+  const t1 = t0 + win;
+  drawBeatGrid(ctx, w, h, s.dpr, t0, t1, dur || win, false);
+  const px = w * 0.34;
+  const lag = Math.max(0, (nowClock("playback") || 0) - pos);
+  if (lag > 0.02 && win > 0) {
+    const x1 = w * (0.34 + lag / win);
+    ctx.fillStyle = "rgba(224,122,58,0.22)";
+    ctx.fillRect(px, 0, Math.max(2, x1 - px), h);
+    ctx.fillStyle = "#e07a3a";
+    ctx.fillRect(x1, 0, Math.max(2, s.dpr), h);
+  }
+  ctx.fillStyle = "rgba(243,230,200,0.95)";
+  ctx.fillRect(px, 0, Math.max(2, s.dpr), h);
+}
+function paintOver(s, pos, dur) {
+  const ctx = s.ctx, w = s.w, h = s.h;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = "#0c090c";
+  ctx.fillRect(0, 0, w, h);
+  const mid = h / 2;
+  const maxH = h * 0.50;
+  if (rw.n) {
+    const n = rw.n;
+    const srcPerPx = n / w;
+    for (let x = 0; x < w; x++) {
+      const a = Math.floor(x * srcPerPx);
+      const b = Math.floor((x + 1) * srcPerPx);
+      stackCol(ctx, x, 1, mid, maxH, peakRange(rw.l, a, b), peakRange(rw.m, a, b), peakRange(rw.h, a, b));
+    }
+    drawBeatGrid(ctx, w, h, s.dpr, 0, dur, dur, true);
+    if (dur > 0) {
+      const win = zoomWindow();
+      const x0 = ((pos - win * 0.34) / dur) * w;
+      const x1 = ((pos + win * 0.66) / dur) * w;
+      ctx.fillStyle = "rgba(243,230,200,0.08)";
+      ctx.fillRect(x0, 0, Math.max(2, x1 - x0), h);
+      ctx.strokeStyle = "rgba(243,230,200,0.35)";
+      ctx.strokeRect(x0 + 0.5, 0.5, Math.max(2, x1 - x0), h - 1);
+    }
+  }
+  if (dur > 0) {
+    const play = nowClock("playback") || pos;
+    const xPlay = (play / dur) * w;
+    const xHeard = (pos / dur) * w;
+    if (Math.abs(xPlay - xHeard) > 1) {
+      ctx.fillStyle = "rgba(224,122,58,0.28)";
+      ctx.fillRect(Math.min(xHeard, xPlay), 0, Math.max(2, Math.abs(xPlay - xHeard)), h);
+      ctx.fillStyle = "#e07a3a";
+      ctx.fillRect(xPlay, 0, Math.max(2, s.dpr), h);
+    }
+    ctx.fillStyle = "rgba(243,230,200,0.95)";
+    ctx.fillRect(xHeard, 0, Math.max(2, s.dpr), h);
+  }
+}
+
+function startViz() {
+  if (viz.raf) return;
+  viz.lastTs = 0;
+  viz.raf = requestAnimationFrame(drawViz);
+}
+function stopViz() {
+  if (viz.raf) cancelAnimationFrame(viz.raf);
+  viz.raf = 0;
+}
+
+function renderQueue(st) {
+  const ul = $("queue");
+  ul.innerHTML = "";
+  const items = st.queue || [];
+  const total = st.queue_total || 0;
+  $("qmeta").textContent = total ? Math.min(items.length, 5) + " of " + total : "";
+  if (!items.length) {
+    const li = document.createElement("li");
+    li.className = "empty empty-state";
+    li.innerHTML = (st.count || 0)
+      ? "<span class='empty-title'>End of the queue</span><span class='empty-detail'>Add more in Library, or play a playlist.</span>"
+      : "<span class='empty-title'>Nothing queued</span><span class='empty-detail'>Open Library to play a track or playlist.</span>";
+    ul.appendChild(li);
+    $("qmore").hidden = true;
+    return;
+  }
+  items.slice(0, 5).forEach((t, i) => {
+    const li = document.createElement("li");
+    li.innerHTML =
+      "<span class='idx'>" + (i + 1) + "</span>" +
+      "<span class='name'>" + esc(t.title || titleOf(t.name)) + "</span>";
+    li.onclick = () => playName(t.name);
+    ul.appendChild(li);
+  });
+  if (total > items.length) {
+    $("qmore").hidden = false;
+    $("qmore").textContent = (total - items.length) + " more in Library →";
+  } else {
+    $("qmore").hidden = true;
+  }
+}
+
+async function tick() {
+  try {
+    const st = await (await fetch("/api/status")).json();
+    last = st;
+    const p = st.player || {};
+    const playing = !!p.playing;
+    const paused = !!p.paused;
+    viz.seed = hashName(p.name || st.host || "gigawatt");
+    viz.mode = playing ? "play" : paused ? "pause" : "idle";
+    viz.vol = ((st.volume == null ? 100 : st.volume) / 100);
+    syncTap(p, playing);
+    $("hostline").textContent = (st.model || "SHR-S2") + " · TOSLINK";
+    const row = (p.name && libByName[p.name]) || {};
+    $("now").textContent = p.name ? (row.title || titleOf(p.name)) : "Nothing playing";
+    const artistEl = $("nowartist");
+    if (artistEl) {
+      artistEl.textContent = p.name ? (row.artist || "Unknown artist") : "Pick a track in Library";
+    }
+    const ck = p.clock || {};
+    const heard = (ck.heard != null ? ck.heard : p.position) || 0;
+    const playback = (ck.playback != null ? ck.playback : p.playback) || heard;
+    $("meta").textContent = fmt(heard) + " / " + fmt(p.duration);
+    applyClockSample(ck, p, false);
+    paintClockStats(heard, playback, true);
+    loadWave(p.name || "");
+    $("playbtn").textContent = playing ? "Pause" : "Play";
+    $("playbtn").setAttribute("aria-label", playing ? "Pause" : "Play");
+    if (!copyBusy) $("err").textContent = p.error || "";
+    if (!volUser) $("vol").value = st.volume == null ? 100 : st.volume;
+    const badge = $("state");
+    badge.className = "live-dot " + (playing ? "live" : paused ? "seen" : "dead");
+    badge.textContent = "";
+    badge.setAttribute("aria-label", playing ? "Playing" : paused ? "Paused" : "Idle");
+    $("vizwrap").classList.toggle("live", playing);
+    document.body.classList.toggle("is-playing", playing);
+    renderQueue(st);
+  } catch (e) {
+    $("err").textContent = "Host is not answering";
+    viz.mode = "idle";
+  }
+}
+
+window.addEventListener("resize", () => { sizeViz(); drawRekord(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    stopViz();
+    try { tap.audio.pause(); } catch (e) {}
+  } else {
+    startViz();
+    tick();
+  }
+});
+startViz();
+ensureLib(true);
+tick();
+setInterval(tick, 1000);
+setInterval(() => ensureLib(false), 15000);
+async function tickClock() {
+  if (document.hidden) return;
+  try {
+    const st = await (await fetch("/api/clock")).json();
+    const p = st.player || {};
+    applyClockSample(p.clock || {}, p, false);
+    if (p.name) syncTap(p, !!p.playing);
+  } catch (e) {}
+}
+setInterval(tickClock, 250);
+</script>
+</body>
+</html>

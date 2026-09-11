@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#030303">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gigawatt">
+<title>Gigawatt — Karaoke</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/crypt.css">
+</head>
+<body class="karaoke-page">
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <h1>Gigawatt</h1>
+      <div class="sub">Karaoke</div>
+    </div>
+    <div class="top-end">
+      <div class="hostline" id="hostline">TOSLINK · lyrics</div>
+      <a class="setlink" href="/settings" aria-label="Settings" title="Settings"><span></span><span></span><span></span></a>
+    </div>
+  </header>
+  <main class="page">
+    <section class="card kara-card">
+      <div class="section-head">
+        <h2 id="kara-title">Nothing playing</h2>
+        <span class="badge" id="state">Idle</span>
+      </div>
+      <div class="meta" id="kara-artist"></div>
+      <div class="kara-stage" id="stage">
+        <div class="kara-prev" id="prev"></div>
+        <div class="kara-now" id="now"></div>
+        <div class="kara-next" id="next"></div>
+      </div>
+      <div class="kara-bar" id="kbar" hidden>
+        <div class="kara-bar-fill" id="kfill"></div>
+      </div>
+      <div class="kara-tools">
+        <span class="kara-src" id="src">No lyrics</span>
+        <span class="kara-time" id="ktime">0:00 / 0:00</span>
+      </div>
+      <p class="hint" id="hint">Drop a matching .lrc next to the track, same as MusicBee or foobar2000 OpenLyrics. Timing follows Host Time Clock (what TOSLINK is emitting). Deleting the track also deletes its lyrics.</p>
+      <div class="row center kara-actions">
+        <button class="icon" onclick="api('/api/prev')" aria-label="Previous">⟨⟨</button>
+        <button class="playbig primary" id="playbtn" onclick="toggle()">Play</button>
+        <button class="icon" onclick="api('/api/next')" aria-label="Next">⟩⟩</button>
+      </div>
+      <div class="row center">
+        <button class="ghost" id="fetchbtn" type="button">Fetch lyrics</button>
+      </div>
+      <div class="err" id="err"></div>
+    </section>
+  </main>
+  <nav class="tabbar">
+    <a href="/">Playing</a>
+    <a href="/library">Library</a>
+    <a class="on" href="/karaoke">Karaoke</a>
+    <a href="/report">Report</a>
+    <a href="/eq">EQ</a>
+    <a href="/settings">Set</a>
+  </nav>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let last = {};
+let lyric = { name: "", lines: [], synced: false, source: "" };
+let playClock = { at: 0, heard: 0, playing: false, duration: 0, name: "" };
+let raf = 0;
+
+function esc(s) {
+  return String(s || "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  }[c]));
+}
+function titleOf(name) {
+  return String(name || "").replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
+}
+function fmt(sec) {
+  sec = Math.max(0, sec || 0);
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return m + ":" + String(s).padStart(2, "0");
+}
+async function api(path, body) {
+  const opt = body === undefined ? { method: "POST" } : {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  };
+  const r = await fetch(path, opt);
+  return r.json();
+}
+function nowHeard() {
+  const base = playClock.heard || 0;
+  if (!playClock.playing) return base;
+  const p = base + (performance.now() - playClock.at) / 1000;
+  return Math.max(0, Math.min(playClock.duration || p, p));
+}
+function lineAt(t) {
+  const rows = lyric.lines || [];
+  let idx = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if ((rows[i].t || 0) <= t) idx = i;
+    else break;
+  }
+  return idx;
+}
+function wordAt(line, t) {
+  const words = (line && line.words) || [];
+  let idx = -1;
+  for (let i = 0; i < words.length; i++) {
+    if ((words[i].t || 0) <= t) idx = i;
+    else break;
+  }
+  return idx;
+}
+function renderWords(line, t) {
+  if (!line) return "♪";
+  const words = line.words || [];
+  if (!words.length) return esc(line.text || "");
+  const wi = wordAt(line, t);
+  return words.map((w, i) => {
+    const cls = i < wi ? "sung" : (i === wi ? "on" : "");
+    return "<span class='kara-word " + cls + "'>" + esc(w.text) + "</span>";
+  }).join("");
+}
+function paint() {
+  const t = nowHeard();
+  const rows = lyric.lines || [];
+  const i = lyric.synced ? lineAt(t) : -1;
+  const prev = i > 0 ? rows[i - 1] : null;
+  const cur = i >= 0 ? rows[i] : null;
+  const nxt = i >= 0 ? rows[i + 1] : (rows[0] || null);
+  $("prev").textContent = prev ? prev.text : "";
+  $("next").textContent = nxt ? nxt.text : "";
+  if (!lyric.synced && rows.length) {
+    $("now").innerHTML = rows.map((row, n) => "<div class='kara-plain" + (n === 0 ? " on" : "") + "'>" + esc(row.text) + "</div>").join("");
+  } else {
+    $("now").innerHTML = renderWords(cur, t);
+  }
+  const dur = playClock.duration || 0;
+  $("ktime").textContent = fmt(t) + " / " + fmt(dur);
+  const bar = $("kbar");
+  if (dur > 0 && lyric.synced) {
+    bar.hidden = false;
+    $("kfill").style.width = Math.min(100, (t / dur) * 100) + "%";
+  } else {
+    bar.hidden = true;
+  }
+}
+function loop() {
+  raf = requestAnimationFrame(loop);
+  paint();
+}
+async function loadLyrics(name, fetchRemote) {
+  if (!name) {
+    lyric = { name: "", lines: [], synced: false, source: "" };
+    $("src").textContent = "No lyrics";
+    $("hint").textContent = "Play a track, then this page follows TOSLINK time. Sidecar .lrc files work like MusicBee / OpenLyrics.";
+    return;
+  }
+  let data;
+  if (fetchRemote) {
+    data = await api("/api/lyrics", { name: name, fetch: true, duration: playClock.duration || 0 });
+  } else {
+    data = await (await fetch("/api/lyrics?name=" + encodeURIComponent(name))).json();
+  }
+  lyric = {
+    name: name,
+    lines: data.lines || [],
+    synced: !!data.synced,
+    source: data.source || ""
+  };
+  if (data.ok && lyric.lines.length) {
+    $("src").textContent = (data.synced ? "Synced · " : "Text · ") + (data.source || "local");
+    $("hint").textContent = "Lines follow Host Time Clock (heard TOSLINK time), not the decoder. Deleting the track also deletes its .lrc and lyrics cache.";
+    $("err").textContent = "";
+  } else {
+    $("src").textContent = "No lyrics";
+    $("hint").textContent = data.hint || "No sidecar .lrc found. Fetch from LRCLIB, or copy an OpenLyrics / MusicBee file next to the track.";
+    $("err").textContent = data.error && data.error !== "no lyrics" ? data.error : "";
+  }
+  $("kara-title").textContent = data.title || titleOf(name);
+  $("kara-artist").textContent = data.artist || "";
+}
+async function toggle() {
+  const p = (last.player || {});
+  if (p.playing) await api("/api/pause");
+  else if (p.paused) await api("/api/resume");
+  else if (p.name) await api("/api/play", { name: p.name });
+  else if ((last.count || 0) > 0) await api("/api/next");
+  tick();
+}
+$("fetchbtn").addEventListener("click", async () => {
+  const name = playClock.name || (last.player && last.player.name);
+  if (!name) { $("err").textContent = "Nothing playing"; return; }
+  $("fetchbtn").disabled = true;
+  $("src").textContent = "Fetching…";
+  try {
+    await loadLyrics(name, true);
+  } finally {
+    $("fetchbtn").disabled = false;
+  }
+});
+async function tick() {
+  try {
+    const st = await (await fetch("/api/status")).json();
+    last = st;
+    const p = st.player || {};
+    const playing = !!p.playing;
+    const paused = !!p.paused;
+    const ck = p.clock || {};
+    playClock = {
+      at: performance.now(),
+      heard: (ck.heard != null ? ck.heard : p.position) || 0,
+      playing: playing,
+      duration: p.duration || 0,
+      name: p.name || ""
+    };
+    $("hostline").textContent = playing ? "TOSLINK · karaoke" : "SHR-S2 · karaoke";
+    $("playbtn").textContent = playing ? "Pause" : "Play";
+    const badge = $("state");
+    badge.className = "badge " + (playing ? "live" : paused ? "seen" : "dead");
+    badge.textContent = playing ? "Live" : paused ? "Paused" : "Idle";
+    const qn = new URLSearchParams(location.search).get("name");
+    const name = qn || p.name || "";
+    if (name && name !== lyric.name) await loadLyrics(name, false);
+    if (!name && lyric.name) await loadLyrics("", false);
+    if (!name) {
+      $("kara-title").textContent = "Nothing playing";
+      $("kara-artist").textContent = "";
+    }
+  } catch (e) {
+    $("err").textContent = "Host is not answering";
+  }
+}
+raf = requestAnimationFrame(loop);
+tick();
+setInterval(tick, 1000);
+setInterval(async () => {
+  if (document.hidden || !playClock.playing) return;
+  try {
+    const st = await (await fetch("/api/clock")).json();
+    const p = st.player || {};
+    const ck = p.clock || {};
+    playClock.at = performance.now();
+    playClock.heard = (ck.heard != null ? ck.heard : p.position) || 0;
+    playClock.playing = !!p.playing;
+    playClock.duration = p.duration || playClock.duration;
+  } catch (e) {}
+}, 250);
+</script>
+</body>
+</html>

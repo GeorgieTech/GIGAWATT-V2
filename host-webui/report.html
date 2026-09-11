@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#030303">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gigawatt">
+<title>Gigawatt — Report</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/crypt.css">
+</head>
+<body class="report-page">
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <h1>Gigawatt</h1>
+      <div class="sub">Report</div>
+    </div>
+    <div class="top-end">
+      <div class="hostline" id="hostline">TOSLINK · report</div>
+      <a class="setlink" href="/settings" aria-label="Settings" title="Settings"><span></span><span></span><span></span></a>
+    </div>
+  </header>
+  <main class="page">
+    <section class="card rpt-card">
+      <div class="section-head">
+        <h2 id="rpt-title">Nothing playing</h2>
+        <span class="badge" id="state">Idle</span>
+      </div>
+      <div class="meta" id="rpt-byline"></div>
+      <p class="hint" id="hint">Play a track, then Research gathers MusicBrainz and Wikipedia and writes a full essay on what the song means and how it can sit in a life. Local tags work offline. Deleting the track also deletes this report.</p>
+      <div class="row center rpt-actions">
+        <button class="primary" id="fetchbtn" type="button">Research</button>
+        <button class="ghost" id="copycap" type="button">Copy caption</button>
+        <button class="ghost" id="copyrpt" type="button">Copy report</button>
+      </div>
+      <div class="err" id="err"></div>
+      <div class="okline" id="ok"></div>
+      <article class="rpt-body" id="body" hidden>
+        <section class="rpt-story" id="story"></section>
+        <section id="essaywrap" hidden>
+          <h3>Meaning and life</h3>
+          <div class="rpt-essay" id="essay"></div>
+        </section>
+        <section>
+          <h3>Facts</h3>
+          <dl class="rpt-facts" id="facts"></dl>
+        </section>
+        <section>
+          <h3>Instagram caption</h3>
+          <pre class="rpt-caption" id="caption"></pre>
+        </section>
+        <section id="srcwrap" hidden>
+          <h3>Sources</h3>
+          <ul class="rpt-sources" id="sources"></ul>
+        </section>
+      </article>
+    </section>
+  </main>
+  <nav class="tabbar">
+    <a href="/">Playing</a>
+    <a href="/library">Library</a>
+    <a href="/karaoke">Karaoke</a>
+    <a class="on" href="/report">Report</a>
+    <a href="/eq">EQ</a>
+    <a href="/settings">Set</a>
+  </nav>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let last = {};
+let report = { name: "" };
+let playName = "";
+
+function esc(s) {
+  return String(s || "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  }[c]));
+}
+function titleOf(name) {
+  return String(name || "").replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
+}
+async function api(path, body) {
+  const opt = body === undefined ? {} : {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  };
+  const r = await fetch(path, opt);
+  return r.json();
+}
+async function copyText(text) {
+  text = String(text || "");
+  if (!text) return false;
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+function paint(data) {
+  report = data || { name: playName };
+  const title = data.title || titleOf(playName) || "Nothing playing";
+  $("rpt-title").textContent = title;
+  const bits = [];
+  if (data.artist) bits.push(data.artist);
+  if (data.album && data.album !== "Unknown album") bits.push(data.album);
+  if (data.year) bits.push(data.year);
+  if (data.length) bits.push(data.length);
+  $("rpt-byline").textContent = bits.join(" · ");
+  $("hint").textContent = data.hint || $("hint").textContent;
+  const story = $("story");
+  story.innerHTML = (data.story || []).map((p) => "<p>" + esc(p) + "</p>").join("");
+  const essay = data.essay || [];
+  $("essaywrap").hidden = !essay.length;
+  $("essay").innerHTML = essay.map((p) => "<p>" + esc(p) + "</p>").join("");
+  const facts = $("facts");
+  facts.innerHTML = (data.facts || []).map((f) => "<div><dt>" + esc(f.label) + "</dt><dd>" + esc(f.value) + "</dd></div>").join("");
+  $("caption").textContent = data.caption || "";
+  const srcs = data.sources || [];
+  $("srcwrap").hidden = !srcs.length;
+  $("sources").innerHTML = srcs.map((s) => "<li><a href=\"" + esc(s.url) + "\" target=\"_blank\" rel=\"noopener\">" + esc(s.label) + "</a></li>").join("");
+  $("body").hidden = !(data.ok && (data.story || []).length);
+  if (data.error && data.error !== "not found") $("err").textContent = data.error;
+  else $("err").textContent = "";
+}
+async function loadReport(name, fetchRemote) {
+  if (!name) {
+    report = { name: "" };
+    $("rpt-title").textContent = "Nothing playing";
+    $("rpt-byline").textContent = "";
+    $("body").hidden = true;
+    $("hint").textContent = "Play a track, then Research gathers facts and writes a meaning-and-life essay for later Instagram posts.";
+    return;
+  }
+  let data;
+  if (fetchRemote) {
+    data = await api("/api/report", { name: name, fetch: true, duration: (last.player && last.player.duration) || 0 });
+  } else {
+    data = await (await fetch("/api/report?name=" + encodeURIComponent(name))).json();
+  }
+  paint(data);
+}
+$("fetchbtn").addEventListener("click", async () => {
+  const name = playName || (last.player && last.player.name);
+  if (!name) { $("err").textContent = "Nothing playing"; return; }
+  $("fetchbtn").disabled = true;
+  $("ok").textContent = "Researching the track and writing the essay…";
+  $("err").textContent = "";
+  try {
+    await loadReport(name, true);
+    $("ok").textContent = report.researched ? "Report ready" : "";
+  } catch (e) {
+    $("err").textContent = "Research did not finish";
+  } finally {
+    $("fetchbtn").disabled = false;
+  }
+});
+$("copycap").addEventListener("click", async () => {
+  const ok = await copyText(report.caption);
+  $("ok").textContent = ok ? "Caption copied" : "Could not copy";
+});
+$("copyrpt").addEventListener("click", async () => {
+  const ok = await copyText(report.markdown);
+  $("ok").textContent = ok ? "Report copied" : "Could not copy";
+});
+async function tick() {
+  try {
+    const st = await (await fetch("/api/status")).json();
+    last = st;
+    const p = st.player || {};
+    const playing = !!p.playing;
+    const paused = !!p.paused;
+    playName = p.name || "";
+    $("hostline").textContent = playing ? "TOSLINK · report" : "SHR-S2 · report";
+    const badge = $("state");
+    badge.className = "badge " + (playing ? "live" : paused ? "seen" : "dead");
+    badge.textContent = playing ? "Live" : paused ? "Paused" : "Idle";
+    if (playName && playName !== report.name) await loadReport(playName, false);
+    if (!playName && report.name) await loadReport("", false);
+  } catch (e) {
+    $("err").textContent = "Host is not answering";
+  }
+}
+tick();
+setInterval(tick, 2500);
+</script>
+</body>
+</html>
