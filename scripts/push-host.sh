@@ -36,4 +36,4 @@ SCP=(scp -O -o IPQoS=none -o ConnectTimeout=20)
 echo "push $(cat "$UI/VERSION") -> RPM@$HOST"
 "${SCP[@]}" "${FILES[@]}" "RPM@$HOST:/tmp/"
 "${SSH[@]}" "RPM@$HOST" sudo env bash /tmp/install-on-host.sh
-"${SSH[@]}" "RPM@$HOST" python3 -c "import sys; sys.path.insert(0,'/data/www'); import peers; print('installed', peers.VERSION)"
+"${SSH[@]}" "RPM@$HOST" cat /data/www/VERSION
