@@ -1,6 +1,6 @@
 # Future plan — four SHC-2000 Gigawatt engines
 
-Status: **Gigawatt V2.0.1 on two live chassis + the original farm plan**. DualLite mule **192.168.1.179** and first SHC-2000 **192.168.1.142** run the same Gigawatt UI, share catalogs when **linked**, and each plays only on its own TOSLINK. Unlink splits catalogs and drops copies pulled from that host. Group play / Unison is out of V2. Path A multicast (`239.18.20.1:41880`) is proven: GS752TPP core `.10` is the IGMP querier, both hosts `igmp_ok`, peer `CRPT` PASS. Three more Quads are not on the LAN yet. Clone another converted host with `scripts/push-host.sh` from tag **v2.0.1** so versions stay identical. The wire is [PEER-PROTOCOL.md](PEER-PROTOCOL.md).
+Status: **Gigawatt V2.0.2 on two live chassis + the original farm plan**. DualLite mule **192.168.1.179** and first SHC-2000 **192.168.1.142** run the same Gigawatt UI, share catalogs when **linked**, and each plays only on its own TOSLINK. Unlink splits catalogs and drops copies pulled from that host. An unlinked host also purges leftover copies at boot. Group play / Unison is out of V2. Path A multicast (`239.18.20.1:41880`) is proven: GS752TPP core `.10` is the IGMP querier, both hosts `igmp_ok`, peer `CRPT` PASS. Three more Quads are not on the LAN yet. Clone another converted host with `scripts/push-host.sh` from tag **v2.0.2** so versions stay identical. The wire is [PEER-PROTOCOL.md](PEER-PROTOCOL.md).
 
 Goal: three SHC-2000 hosts are **library + job workers**. A fourth SHC-2000 is the **TOSLINK playback cache** — it lists the whole fleet library, but only keeps a few files on its own eMMC while they are about to play, playing, or just played. A **separate application** (not this DualLite UI) sits in front, owns the fleet catalog, copies bytes when needed, fans research jobs out, and consumes the JSON those four hosts produce.
 
@@ -136,6 +136,7 @@ Version trail of the live pair:
 | V1.1.17 | Play-to groups: local jack until you add a linked host. No ffmpeg HTTP stream. |
 | V2.0.0 | Project renamed Gigawatt. Link = library share only. Unlink is sticky (no auto-relink). Unison / group play removed. |
 | V2.0.1 | Unlink splits libraries: drop remote catalog + hot copies, keep home files. `scripts/push-host.sh` clones the same tag onto another host. |
+| V2.0.2 | Unlinked hosts purge leftover copies at boot so Library is home-only until you link again. |
 
 Hard rules that did **not** change: no AirPlay / Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID.
 

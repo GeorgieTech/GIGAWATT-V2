@@ -21,7 +21,7 @@ from research import _clean, sentences
 
 XAI_URL = os.environ.get("CRYPT_XAI_URL", "https://api.x.ai/v1/chat/completions")
 XAI_MODEL = os.environ.get("CRYPT_ESSAY_MODEL", "grok-4.5")
-CLIENT = "CRYPT/2.0.1 (https://github.com/GeorgieTech/GIGAWATT-V2)"
+CLIENT = "CRYPT/2.0.2 (https://github.com/GeorgieTech/GIGAWATT-V2)"
 
 
 def _api_key():

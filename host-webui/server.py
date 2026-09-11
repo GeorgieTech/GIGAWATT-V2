@@ -300,6 +300,8 @@ class CryptApp(object):
         self.player.set_eq(_load_eq())
         PEERS.player = self.player
         self._status_refresh = 0.0
+        PEERS.purge_unlinked_hot()
+        self.evict_unlinked()
         self.refresh()
 
     def refresh(self, local_only=False):

@@ -18,7 +18,7 @@ except ImportError:
     from urllib import quote, urlencode
     from urllib2 import Request, urlopen
 
-CLIENT = "CRYPT/2.0.1 (https://github.com/GeorgieTech/GIGAWATT-V2)"
+CLIENT = "CRYPT/2.0.2 (https://github.com/GeorgieTech/GIGAWATT-V2)"
 MB = os.environ.get("CRYPT_MUSICBRAINZ", "https://musicbrainz.org/ws/2")
 WIKI = os.environ.get("CRYPT_WIKI", "https://en.wikipedia.org")
 try:

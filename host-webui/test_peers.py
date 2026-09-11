@@ -353,6 +353,9 @@ class LinkTests(unittest.TestCase):
             by = dict((t["name"], t) for t in local)
             self.assertTrue(by["Mine.flac"]["home"])
             self.assertTrue(by["Mine.flac"]["local"])
+            leftover = idx.purge_unlinked_hot()
+            self.assertEqual(leftover, ["Glow.flac", "ShelfOnly.flac"])
+            self.assertEqual(idx.take_pending_evict(), leftover)
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 

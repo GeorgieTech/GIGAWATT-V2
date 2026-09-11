@@ -27,7 +27,7 @@ except ImportError:
 from player import MUSIC_DIR
 import crypt_wire
 
-VERSION = "2.0.1"
+VERSION = "2.0.2"
 PEERS_FILE = os.environ.get("CRYPT_PEERS", "/data/crypt/peers.json")
 SEEN_FILE = os.environ.get("CRYPT_SEEN", "/data/crypt/seen.json")
 HOT_FILE = os.environ.get("CRYPT_HOT", "/data/crypt/hot.json")
@@ -1232,6 +1232,14 @@ class PeerIndex(object):
     def take_pending_evict(self):
         names = list(self._pending_evict or [])
         self._pending_evict = []
+        return names
+
+    def purge_unlinked_hot(self):
+        """If no shelves, every hot copy is foreign leftover. Queue them for eviction."""
+        if self.config().get("shelves"):
+            return []
+        names = sorted(self._hot)
+        self._pending_evict = names
         return names
 
     def unlink(self, key, notify=True):
