@@ -16,9 +16,12 @@ DEFAULT_NAME = "Gigawatt"
 
 CONF_TEMPLATE = """general = {
   name = "%s";
-  interpolation = "basic";
+  interpolation = "auto";
   output_backend = "pa";
-  ignore_volume_control = "no";
+  ignore_volume_control = "yes";
+  drift_tolerance_in_seconds = 0.012;
+  audio_backend_buffer_desired_length_in_seconds = 0.50;
+  audio_backend_buffer_interpolation_threshold_in_seconds = 0.12;
   port = 5000;
 };
 sessioncontrol = {
@@ -167,8 +170,12 @@ class AirPlay(object):
                 self.proc = None
                 self.active = False
                 running = False
-            if running and not self.active and _pulse_airplay_playing():
-                self.active = True
+            if running and not self.active:
+                now = time.time()
+                if now - float(getattr(self, "_pulse_at", 0) or 0) >= 5:
+                    self._pulse_at = now
+                    if _pulse_airplay_playing():
+                        self.active = True
             title = self.title
             if self.active and not title:
                 title = "AirPlay"
@@ -296,7 +303,6 @@ class AirPlay(object):
         self.error = ""
         self.active = False
         threading.Thread(target=self._meta_loop, daemon=True).start()
-        threading.Thread(target=self._pulse_watch, daemon=True).start()
         return True
 
     def _stop_locked(self):
@@ -317,31 +323,6 @@ class AirPlay(object):
                 proc.kill()
             except Exception:
                 pass
-
-    def _pulse_watch(self):
-        while True:
-            with self.lock:
-                proc = self.proc
-                known_active = self.active
-            if proc is None or proc.poll() is not None:
-                return
-            flowing = _pulse_airplay_playing()
-            if flowing and not known_active:
-                begin = False
-                with self.lock:
-                    if not self.active:
-                        self.active = True
-                        begin = True
-                if begin and self.on_begin:
-                    try:
-                        self.on_begin()
-                    except Exception:
-                        pass
-            elif not flowing and known_active:
-                with self.lock:
-                    if not self.title:
-                        self.active = False
-            time.sleep(1.0)
 
     def _meta_loop(self):
         buf = b""

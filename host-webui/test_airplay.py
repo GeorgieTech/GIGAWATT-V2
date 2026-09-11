@@ -10,6 +10,15 @@ import airplay
 import playback
 
 
+class ConfTests(unittest.TestCase):
+    def test_stuffing_is_auto_not_basic(self):
+        conf = airplay.CONF_TEMPLATE % ("Gigawatt E409", "/tmp/gigawatt-airplay.meta")
+        self.assertIn('interpolation = "auto"', conf)
+        self.assertNotIn('interpolation = "basic"', conf)
+        self.assertIn("audio_backend_buffer_desired_length_in_seconds = 0.50", conf)
+        self.assertIn('ignore_volume_control = "yes"', conf)
+
+
 class NameTests(unittest.TestCase):
     def test_sanitize_accepts_host_stamp_names(self):
         self.assertEqual(airplay.sanitize_name("Gigawatt E409"), "Gigawatt E409")

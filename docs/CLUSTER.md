@@ -138,6 +138,7 @@ Version trail of the live pair:
 | V2.0.1 | Unlink splits libraries: drop remote catalog + hot copies, keep home files. `scripts/push-host.sh` clones the same tag onto another host. |
 | V2.0.2 | Unlinked hosts purge leftover copies at boot so Library is home-only until you link again. |
 | V2.1.0 | Browser playback and AirPlay 1 (unique renameable name per host). Same shairport-sync as Gigawatt Beta 2. |
+| V2.1.1 | AirPlay skip fix: auto/soxr stuffing, 0.5 s buffer, no 1 Hz pactl into Pulse. |
 
 Hard rules that did **not** change: no AirPlay / Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID.
 

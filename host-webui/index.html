@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.1.0</div>
+      <div class="sub">S2 · V2.1.1</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -1162,6 +1162,7 @@ setInterval(tick, 1000);
 setInterval(() => ensureLib(false), 15000);
 async function tickClock() {
   if (document.hidden) return;
+  if ((last.airplay || {}).active) return;
   try {
     const st = await (await fetch("/api/clock")).json();
     const p = st.player || {};
