@@ -305,6 +305,57 @@ class LinkTests(unittest.TestCase):
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
+    def test_unlink_queues_hot_copies_not_home_files(self):
+        folder = tempfile.mkdtemp(prefix="crypt-evict-")
+        try:
+            path = os.path.join(folder, "peers.json")
+            seen = os.path.join(folder, "seen.json")
+            hot = os.path.join(folder, "hot.json")
+            with open(path, "w") as fh:
+                json.dump({"id": "crypt-viewer", "shelves": []}, fh)
+
+            def fake(url):
+                return {
+                    "ok": True,
+                    "crypt": 1,
+                    "id": "crypt-001aae10e4090000",
+                    "uid": "001AAE10E4090000",
+                    "host": "crypt-001aae10e4090000",
+                    "ip": "192.168.1.179",
+                    "model": "SHR-S2-00",
+                    "version": "2.0.1",
+                    "shelves": [],
+                    "seen": [],
+                    "tracks": 1,
+                }
+
+            idx = peers.PeerIndex(path=path, http=fake, seen_path=seen, hot_path=hot)
+            ok, err = idx.link("http://192.168.1.179", notify=False)
+            self.assertTrue(ok, err)
+            idx._hot.add("Glow.flac")
+            idx._hot.add("ShelfOnly.flac")
+            idx._persist_hot()
+            idx._remote["http://192.168.1.179"] = (
+                time.time(),
+                [{"name": "Glow.flac"}, {"name": "ShelfOnly.flac"}],
+                "",
+                1,
+            )
+            ok, err = idx.unlink("001AAE10E4090000", notify=False)
+            self.assertTrue(ok, err)
+            self.assertEqual(peers.load_config(path)["shelves"], [])
+            self.assertEqual(idx.take_pending_evict(), ["Glow.flac", "ShelfOnly.flac"])
+            self.assertEqual(idx.take_pending_evict(), [])
+            local = idx.tag_local([
+                {"name": "Mine.flac", "size": 4},
+                {"name": "Glow.flac", "size": 12},
+            ])
+            by = dict((t["name"], t) for t in local)
+            self.assertTrue(by["Mine.flac"]["home"])
+            self.assertTrue(by["Mine.flac"]["local"])
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
     def test_fetch_shelf_skips_http_when_libver_matches(self):
         calls = []
         tracks = [{"name": "Glow.flac", "size": 12, "mtime": 8}]

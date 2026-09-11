@@ -1,12 +1,34 @@
-# Deploy notes — Gigawatt V2.0.0
+# Deploy notes — Gigawatt V2.0.1
 
-Targets: **192.168.1.179** (DualLite S2) and **192.168.1.142** (SHC-S2-00 Quad). Never 192.168.1.40 / .178 / .180.
+Every host on this tag must run the **same** files. Do not mix 2.0.0 and 2.0.1. Convert a new SHC-2000 the same way, then push this checkout.
 
-Do not `dd` the S2 eMMC onto an SHC-2000. Install Gigawatt files the same way on both; `/data` is `mmcblk0p2` on DualLite and `mmcblk0p3` on Quad.
+Targets so far: **192.168.1.179** (DualLite S2) and **192.168.1.142** (SHC-S2-00 Quad). Never 192.168.1.40 / .178 / .180.
+
+Do not `dd` the S2 eMMC onto an SHC-2000. `/data` is `mmcblk0p2` on DualLite and `mmcblk0p3` on Quad.
 
 SSH user: `RPM`. Do not commit the password. `scp -O` from modern macOS.
 
-## First-time unit
+## Clone a new host (identical version)
+
+On a converted chassis (Savant startup + nginx already masked, Pulse unit in place):
+
+```sh
+git clone https://github.com/GeorgieTech/GIGAWATT-V2.git
+cd GIGAWATT-V2
+git checkout v2.0.1
+chmod +x scripts/push-host.sh host-webui/install-on-host.sh
+scripts/push-host.sh 192.168.1.NEW
+```
+
+That copies `host-webui/FILES` to `/tmp` on the box and runs `install-on-host.sh`. Confirm:
+
+```sh
+curl -s http://192.168.1.NEW/api/status | python3 -c "import json,sys; print(json.load(sys.stdin).get('version'))"
+```
+
+It must print `2.0.1` on **every** host. If one box is behind, push the same tag again. Link libraries from Settings after both are on the same version.
+
+## First-time unit (once per chassis)
 
 1. Mask `savant-startup-manager.service` and `nginx.service`.
 2. Stop them. Set default target to `multi-user.target`.
@@ -14,40 +36,13 @@ SSH user: `RPM`. Do not commit the password. `scp -O` from modern macOS.
 4. Install files in `/data/www`, music dir `/data/music`.
 5. Enable `crypt-hostname`, `crypt-pulse`, `crypt-web`.
 
-Savant images on the eMMC are not deleted.
+Savant images on the eMMC are not deleted. Peer wire: [PEER-PROTOCOL.md](PEER-PROTOCOL.md).
 
-From the repo root. Peer wire: [PEER-PROTOCOL.md](PEER-PROTOCOL.md).
-
-```sh
-scp -O host-webui/index.html host-webui/library.html host-webui/eq.html host-webui/karaoke.html host-webui/report.html host-webui/settings.html host-webui/crypt.css \
-  host-webui/server.py host-webui/player.py host-webui/library.py host-webui/wave.py host-webui/lyrics.py host-webui/research.py host-webui/report.py host-webui/essay.py host-webui/peers.py host-webui/crypt_wire.py \
-  host-webui/manifest.webmanifest host-webui/favicon.svg \
-  host-webui/icon.png host-webui/apple-touch-icon.png \
-  host-webui/pin-hostname.sh \
-  host-webui/crypt-web.service host-webui/crypt-pulse.service \
-  host-webui/crypt-hostname.service \
-  RPM@192.168.1.179:/tmp/
-```
-
-Then on the host, as root via `sudo env bash`:
+Manual copy (same files as `scripts/push-host.sh`):
 
 ```sh
-mkdir -p /data/www /data/music
-chown RPM:RPM /data/www /data/music
-cp /tmp/index.html /tmp/library.html /tmp/eq.html /tmp/karaoke.html /tmp/report.html /tmp/settings.html /tmp/crypt.css \
-  /tmp/server.py /tmp/player.py /tmp/library.py /tmp/wave.py /tmp/lyrics.py /tmp/research.py /tmp/report.py /tmp/essay.py /tmp/peers.py /tmp/crypt_wire.py /tmp/pin-hostname.sh \
-  /tmp/manifest.webmanifest /tmp/favicon.svg /tmp/icon.png /tmp/apple-touch-icon.png \
-  /data/www/
-rm -f /data/www/unison.py
-chmod +x /data/www/pin-hostname.sh /data/www/server.py
-cp /tmp/crypt-web.service /tmp/crypt-pulse.service /tmp/crypt-hostname.service /etc/systemd/system/
-systemctl mask savant-startup-manager.service nginx.service
-systemctl stop savant-startup-manager.service nginx.service
-systemctl stop pulseaudio.service 2>/dev/null || true
-systemctl set-default multi-user.target
-systemctl daemon-reload
-systemctl enable crypt-hostname.service crypt-pulse.service crypt-web.service
-systemctl restart crypt-hostname.service crypt-pulse.service crypt-web.service
+scp -O -o IPQoS=none $(sed '/^#/d;/^$/d' host-webui/FILES | sed 's|^|host-webui/|') RPM@192.168.1.179:/tmp/
+ssh -o IPQoS=none RPM@192.168.1.179 sudo env bash /tmp/install-on-host.sh
 ```
 
 Open http://192.168.1.179/
@@ -57,5 +52,5 @@ Open http://192.168.1.179/
 - No `apt`. Yocto image.
 - Python 3.8 stdlib only.
 - DualLite / 1 GB — library + TOSLINK. No extra daemons. No SSC expanders.
-- No group play / Unison in V2. Link is library share only.
+- No group play / Unison in V2. Link is library share only. Unlink splits catalogs and drops copies pulled from that host. Home files stay.
 - Optional meaning essay: put `XAI_API_KEY=...` in `/data/crypt/xai.env` (not in git). The unit already reads that file. Without it, Research still writes a sourced essay from Wikipedia and local lyrics.

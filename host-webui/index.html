@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.0.0</div>
+      <div class="sub">S2 · V2.0.1</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -1077,6 +1077,8 @@ async function tick() {
     viz.vol = ((st.volume == null ? 100 : st.volume) / 100);
     syncTap(p, playing);
     $("hostline").textContent = (st.model || "SHR-S2") + " · TOSLINK";
+    const sub = document.querySelector(".brand .sub");
+    if (sub && st.version) sub.textContent = "S2 · V" + st.version;
     const row = (p.name && libByName[p.name]) || {};
     $("now").textContent = p.name ? (row.title || titleOf(p.name)) : "Nothing playing";
     const artistEl = $("nowartist");

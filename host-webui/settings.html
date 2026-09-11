@@ -31,7 +31,7 @@
         <h2>On the LAN</h2>
         <span class="badge" id="lan-badge">Listening</span>
       </div>
-      <p class="hint">Each chassis keeps its own Savant UID. <strong>Live</strong> means we hear it on 192.168.1.0/24. <strong>Linked</strong> merges both libraries so you can play a remote track on <em>this</em> jack (copy-then-play). Hosts do not play together. Unlink stays unlinked until you tap Link again.</p>
+      <p class="hint">Each chassis keeps its own Savant UID. <strong>Live</strong> means we hear it on 192.168.1.0/24. <strong>Linked</strong> merges both libraries so you can play a remote track on <em>this</em> jack (copy-then-play). <strong>Unlink</strong> splits the catalogs again: this jack only lists files that live here, and copies pulled from that host are removed. Hosts do not play together.</p>
       <div class="mesh-wrap" aria-hidden="true">
         <svg id="mesh" viewBox="0 0 320 148" preserveAspectRatio="xMidYMid meet"></svg>
       </div>
@@ -248,7 +248,7 @@ async function linkHost(h) {
   }
 }
 async function unlinkHost(h) {
-  if (!confirm("Unlink " + (h.host || h.uid) + "? This host will stop listing that library. Files on that host are not deleted. It will not relink until you tap Link.")) return;
+  if (!confirm("Unlink " + (h.host || h.uid) + "? This jack will only show its own library. Copies pulled from that host are removed here. Files that live on that host are not deleted. It will not relink until you tap Link.")) return;
   busy = true;
   try {
     const data = await api({
@@ -258,7 +258,9 @@ async function unlinkHost(h) {
       url: h.url || "",
     });
     render(data);
-    $("ok").textContent = data.ok ? "Unlinked — will not auto-relink" : "";
+    let ok = "Unlinked — this library only";
+    if (data.ok && data.dropped) ok += " · " + data.dropped + " cop" + (data.dropped === 1 ? "y" : "ies") + " removed";
+    $("ok").textContent = data.ok ? ok : "";
     $("err").textContent = data.ok ? "" : (data.error || "unlink failed");
   } finally {
     busy = false;

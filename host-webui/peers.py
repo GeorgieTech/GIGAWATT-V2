@@ -27,7 +27,7 @@ except ImportError:
 from player import MUSIC_DIR
 import crypt_wire
 
-VERSION = "2.0.0"
+VERSION = "2.0.1"
 PEERS_FILE = os.environ.get("CRYPT_PEERS", "/data/crypt/peers.json")
 SEEN_FILE = os.environ.get("CRYPT_SEEN", "/data/crypt/seen.json")
 HOT_FILE = os.environ.get("CRYPT_HOT", "/data/crypt/hot.json")
@@ -524,6 +524,7 @@ class PeerIndex(object):
         self._own_libver = 0
         self._own_tracks = 0
         self.player = None
+        self._pending_evict = []
         self._load_seen()
         self._load_hot()
 
@@ -886,9 +887,11 @@ class PeerIndex(object):
                         except (TypeError, ValueError):
                             same_size = False
                         if same_size and int(t.get("size") or 0) > 0:
+                            # Linked display can stamp the shelf as home. Do not
+                            # mark this chassis's own file hot — unlink must not
+                            # delete originals that were uploaded here.
                             self._decorate(cur, remote_owner, remote_uid, False)
                             cur["home"] = False
-                            self.mark_hot(name)
                     if not cur.get("title") and t.get("title"):
                         cur["title"] = t.get("title")
                     if not cur.get("artist") and t.get("artist"):
@@ -1210,6 +1213,27 @@ class PeerIndex(object):
                     pass
         return True, ""
 
+    def hot_copies_for_shelf(self, shelf, last=False):
+        """Names copied here from a shelf. Last remaining shelf: every hot copy."""
+        names = set(self._hot)
+        if last:
+            return sorted(names)
+        url = (shelf or {}).get("url")
+        hit = self._remote.get(url) if url else None
+        remote = set()
+        if hit and isinstance(hit[1], list):
+            for t in hit[1]:
+                if t and t.get("name"):
+                    remote.add(t.get("name"))
+        if remote:
+            return sorted(n for n in names if n in remote)
+        return []
+
+    def take_pending_evict(self):
+        names = list(self._pending_evict or [])
+        self._pending_evict = []
+        return names
+
     def unlink(self, key, notify=True):
         key = str(key or "").strip()
         if not key:
@@ -1224,6 +1248,8 @@ class PeerIndex(object):
             kept.append(item)
         if not dropped:
             return False, "not linked"
+        last = not kept
+        copies = self.hot_copies_for_shelf(dropped, last=last)
         declined = list(cfg.get("declined") or [])
         for bit in _keys_of(dropped) + [key]:
             if bit and bit not in declined:
@@ -1232,6 +1258,10 @@ class PeerIndex(object):
         cfg["declined"] = declined
         save_config(cfg, self.path)
         self.reload()
+        url = dropped.get("url")
+        if url:
+            self._remote.pop(url, None)
+        self._pending_evict = copies
         drop_keys = set(_keys_of(dropped) + [key])
         with self.lock:
             for host in self._seen.values():

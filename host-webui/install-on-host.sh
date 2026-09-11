@@ -1,11 +1,14 @@
 #!/bin/bash
+# Install the Gigawatt files already in /tmp onto this chassis.
+# Same script on every host. Does not touch /data/music home files.
 set -e
-mkdir -p /data/www /data/music
-cp /tmp/index.html /tmp/library.html /tmp/eq.html /tmp/karaoke.html /tmp/report.html /tmp/settings.html /tmp/crypt.css /tmp/server.py /tmp/player.py /tmp/library.py /tmp/wave.py /tmp/lyrics.py /tmp/research.py /tmp/report.py /tmp/essay.py /tmp/peers.py /tmp/crypt_wire.py \
+mkdir -p /data/www /data/music /data/crypt
+cp /tmp/VERSION /tmp/index.html /tmp/library.html /tmp/eq.html /tmp/karaoke.html /tmp/report.html /tmp/settings.html /tmp/crypt.css \
+  /tmp/server.py /tmp/player.py /tmp/library.py /tmp/wave.py /tmp/lyrics.py /tmp/research.py /tmp/report.py /tmp/essay.py /tmp/peers.py /tmp/crypt_wire.py \
   /tmp/pin-hostname.sh /tmp/manifest.webmanifest /tmp/favicon.svg /tmp/icon.png /tmp/apple-touch-icon.png /data/www/
 rm -f /data/www/unison.py
 chmod +x /data/www/pin-hostname.sh /data/www/server.py /data/www/player.py
-chown -R RPM:RPM /data/www /data/music
+chown -R RPM:RPM /data/www /data/music /data/crypt
 cp /tmp/crypt-web.service /tmp/crypt-pulse.service /tmp/crypt-hostname.service /etc/systemd/system/
 systemctl mask savant-startup-manager.service nginx.service || true
 timeout 8 systemctl stop nginx.service || true
@@ -24,13 +27,12 @@ systemctl restart crypt-pulse.service
 sleep 2
 systemctl restart crypt-web.service
 sleep 2
-echo ===== STATUS =====
+echo STATUS
 systemctl is-active crypt-web.service || true
 systemctl is-active crypt-pulse.service || true
 systemctl is-active crypt-hostname.service || true
-systemctl is-active nginx.service || true
-systemctl is-active savant-startup-manager.service || true
 hostname
+python3 -c "import sys; sys.path.insert(0, '/data/www'); import peers; print('version', peers.VERSION)"
+test ! -e /data/www/unison.py
 ss -tln | grep -E ':80|:443' || true
-systemctl status crypt-web.service --no-pager -l | head -30 || true
-journalctl -u crypt-web.service -n 20 --no-pager || true
+systemctl status crypt-web.service --no-pager -l | head -20 || true

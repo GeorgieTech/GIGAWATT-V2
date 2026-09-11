@@ -931,7 +931,7 @@ function applyLib(st, lib, force) {
   }
   const tagged = (lib.tracks || []).reduce((acc, t) => acc + (t.tagged ? 1 : 0), 0);
   const homes = (lib.tracks || []).map((t) => (t.home_stamp || "") + (t.here ? "h" : "")).join("");
-  const next = n + ":" + tagged + ":" + (lib.scanning ? 1 : 0) + ":" + view + ":" + artist + ":" + album + ":" + playlistId + ":" + q() + ":" + playingName() + ":" + (lib.playlists || []).map((x) => x.id + x.count).join(",") + ":" + homes;
+  const next = n + ":" + tagged + ":" + (lib.scanning ? 1 : 0) + ":" + view + ":" + artist + ":" + album + ":" + playlistId + ":" + q() + ":" + playingName() + ":" + (lib.playlists || []).map((x) => x.id + x.count).join(",") + ":" + homes + ":" + shelves.length;
   if (manage && !force) return;
   if (force || next !== stamp) {
     stamp = next;

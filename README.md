@@ -1,10 +1,10 @@
-# Gigawatt V2.0.0
+# Gigawatt V2.0.1
 
 Repo: [`GIGAWATT-V2`](https://github.com/GeorgieTech/GIGAWATT-V2)
 
 A local TOSLINK music player on recycled Savant S2 hosts (DualLite SHR-S2-00 and Quad SHC-S2-00). Library on disk, web UI on port 80, optical out.
 
-**Current release: [V2.0.0](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.0.0)** (`v2.0.0`).
+**Current release: [V2.0.1](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.0.1)** (`v2.0.1`). Previous: [V2.0.0](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.0.0).
 
 This project is **not affiliated with Savant Systems**.
 
@@ -12,10 +12,11 @@ Targets: **192.168.1.179** (DualLite S2 mule) and **192.168.1.142** (first SHC-2
 
 Lineage: this is the V2 rewrite of the CRYPT DualLite/Quad lab player (`savant-host-s2-smart-home-processor-BETA1`). Wire discovery is still CRYPT/1 so the two lab boxes keep finding each other.
 
-## What V2.0.0 does
+## What V2.0.1 does
 
 - **Link shares libraries only.** Linked hosts merge catalogs both ways. Play copies the file onto *this* host, then this TOSLINK. Hosts do not play as a group and do not Unison.
-- **Unlink stays unlinked.** Confirming Unlink drops the shelf and remembers the decline, so Settings scan / 4 s probe / boot hello will not silently relink. Tap **Link library** when you want it back.
+- **Unlink splits libraries.** Confirming Unlink drops the shelf, forgets that catalog, and removes copies that were pulled here from that host. This jack then lists only files that live on this disk. Home files are not deleted. Unlink stays unlinked until you tap **Link library**.
+- **Identical clone.** `scripts/push-host.sh <ip>` installs this tag on another converted S2. Every host on the fleet should report the same `version` from `/api/status`.
 - Play a track that lives on the other host: copy-then-play onto this jack. No ffmpeg HTTP stream.
 - Dark Playing and Library UI, Karaoke, Report, 31-band TOSLINK EQ
 - Settings: LAN discovery by Savant UID. **Live** is heard on the wire; **Linked** merges libraries. Do not trust Live for IGMP — `beacon.igmp_ok` / `igmp_error` stay sticky if `IP_ADD_MEMBERSHIP` failed

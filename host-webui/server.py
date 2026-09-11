@@ -589,6 +589,16 @@ class CryptApp(object):
             self.refresh()
         return True
 
+    def evict_unlinked(self):
+        """After unlink: drop copies pulled from that shelf. Keep home files."""
+        names = PEERS.take_pending_evict()
+        dropped = 0
+        for name in names:
+            if self.delete_name(name, refresh=False):
+                dropped += 1
+        self.refresh(local_only=True)
+        return dropped
+
     def delete_names(self, names):
         if not isinstance(names, list):
             raise ValueError("delete must be a list of names")
@@ -855,6 +865,8 @@ class Handler(BaseHTTPRequestHandler):
                 if action == "link":
                     notify = True if "notify" not in body else bool(body.get("notify"))
                     ok, err = PEERS.link(body.get("url") or body.get("ip") or "", notify=notify)
+                    if ok:
+                        APP.refresh()
                     payload = PEERS.fleet(probe=True, extra=_hello_extra())
                     payload["ok"] = ok
                     payload["error"] = err
@@ -866,9 +878,13 @@ class Handler(BaseHTTPRequestHandler):
                         body.get("id") or body.get("uid") or body.get("url") or "",
                         notify=notify,
                     )
+                    dropped = 0
+                    if ok:
+                        dropped = APP.evict_unlinked()
                     payload = PEERS.fleet(probe=False, extra=_hello_extra())
                     payload["ok"] = ok
                     payload["error"] = err
+                    payload["dropped"] = dropped
                     self._send(200 if ok else 400, payload)
                     return
                 self._send(400, {"ok": False, "error": "need action scan/link/unlink"})
