@@ -20,8 +20,9 @@ CONF_TEMPLATE = """general = {
   output_backend = "pa";
   ignore_volume_control = "yes";
   drift_tolerance_in_seconds = 0.012;
+  resync_threshold_in_seconds = 0.150;
   audio_backend_buffer_desired_length_in_seconds = 0.50;
-  audio_backend_buffer_interpolation_threshold_in_seconds = 0.12;
+  audio_backend_buffer_interpolation_threshold_in_seconds = 0.075;
   port = 5000;
 };
 sessioncontrol = {
@@ -126,6 +127,12 @@ def pulse_ready(timeout=0.0):
         time.sleep(0.2)
 
 
+def _pulse_env():
+    env = os.environ.copy()
+    env["PULSE_SERVER"] = env.get("PULSE_SERVER") or ("unix:" + _pulse_sock_path())
+    return env
+
+
 def _pulse_airplay_playing():
     try:
         out = subprocess.check_output(
@@ -133,10 +140,51 @@ def _pulse_airplay_playing():
             stderr=subprocess.DEVNULL,
             universal_newlines=True,
             timeout=2,
+            env=_pulse_env(),
         )
     except Exception:
         return False
     return "Gigawatt AirPlay" in out or "shairport" in out.lower()
+
+
+def _relax_pulse_idle():
+    """Savant loads module-suspend-on-idle timeout=0, which suspends TOSLINK
+    between AirPlay packets and makes the jack skip. Hold the sink up."""
+    env = _pulse_env()
+    try:
+        out = subprocess.check_output(
+            ["pactl", "list", "modules", "short"],
+            stderr=subprocess.DEVNULL,
+            universal_newlines=True,
+            timeout=3,
+            env=env,
+        )
+    except Exception:
+        return
+    for line in out.splitlines():
+        if "module-suspend-on-idle" not in line:
+            continue
+        idx = line.split()[0]
+        try:
+            subprocess.call(
+                ["pactl", "unload-module", idx],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+                env=env,
+            )
+        except Exception:
+            pass
+    try:
+        subprocess.call(
+            ["pactl", "load-module", "module-suspend-on-idle", "timeout=300"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+            env=env,
+        )
+    except Exception:
+        pass
 
 
 class AirPlay(object):
@@ -281,6 +329,7 @@ class AirPlay(object):
         if not pulse_ready(0):
             self.error = "waiting for PulseAudio"
             return False
+        _relax_pulse_idle()
         try:
             self._ensure_fifo()
         except Exception as exc:

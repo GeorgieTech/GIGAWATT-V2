@@ -1,0 +1,9 @@
+#!/usr/bin/pulseaudio -nF
+# Gigawatt Pulse graph: Savant TOSLINK plus streaming-safe idle.
+# Do not replace savant-vcd.pa — include it, then stop immediate suspend.
+.fail
+.include /etc/pulse/savant-vcd.pa
+.nofail
+unload-module module-suspend-on-idle
+.fail
+load-module module-suspend-on-idle timeout=300

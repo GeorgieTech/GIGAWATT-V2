@@ -5,7 +5,7 @@ set -e
 mkdir -p /data/www /data/music /data/crypt
 cp /tmp/VERSION /tmp/index.html /tmp/library.html /tmp/eq.html /tmp/karaoke.html /tmp/report.html /tmp/settings.html /tmp/crypt.css \
   /tmp/server.py /tmp/player.py /tmp/library.py /tmp/wave.py /tmp/lyrics.py /tmp/research.py /tmp/report.py /tmp/essay.py /tmp/peers.py /tmp/crypt_wire.py \
-  /tmp/airplay.py /tmp/playback.py \
+  /tmp/airplay.py /tmp/playback.py /tmp/gigawatt-pulse.pa \
   /tmp/pin-hostname.sh /tmp/manifest.webmanifest /tmp/favicon.svg /tmp/icon.png /tmp/apple-touch-icon.png /data/www/
 rm -f /data/www/unison.py
 chmod +x /data/www/pin-hostname.sh /data/www/server.py /data/www/player.py
@@ -25,6 +25,16 @@ if [ -n "$APSRC" ]; then
   chown -R RPM:RPM /data/opt/airplay
 fi
 chown -R RPM:RPM /data/www /data/music /data/crypt
+if [ -f /etc/pulse/daemon.conf ] && ! grep -q 'GIGAWATT-AUDIO' /etc/pulse/daemon.conf; then
+  cat >> /etc/pulse/daemon.conf << 'EOF'
+
+# GIGAWATT-AUDIO
+resample-method = speex-float-1
+default-fragments = 8
+default-fragment-size-msec = 50
+high-priority = yes
+EOF
+fi
 cp /tmp/crypt-web.service /tmp/crypt-pulse.service /tmp/crypt-hostname.service /etc/systemd/system/
 systemctl mask savant-startup-manager.service nginx.service || true
 timeout 8 systemctl stop nginx.service || true

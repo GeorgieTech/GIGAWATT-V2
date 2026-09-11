@@ -16,6 +16,7 @@ class ConfTests(unittest.TestCase):
         self.assertIn('interpolation = "auto"', conf)
         self.assertNotIn('interpolation = "basic"', conf)
         self.assertIn("audio_backend_buffer_desired_length_in_seconds = 0.50", conf)
+        self.assertIn("resync_threshold_in_seconds = 0.150", conf)
         self.assertIn('ignore_volume_control = "yes"', conf)
 
 

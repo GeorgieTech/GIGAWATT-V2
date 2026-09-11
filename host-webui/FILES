@@ -26,4 +26,5 @@ pin-hostname.sh
 crypt-web.service
 crypt-pulse.service
 crypt-hostname.service
+gigawatt-pulse.pa
 install-on-host.sh
