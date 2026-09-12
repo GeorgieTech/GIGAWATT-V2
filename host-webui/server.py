@@ -24,12 +24,14 @@ from peers import PEERS, VERSION, identity
 from cover import COVERS
 from airplay import AirPlay
 from playback import load_playback, save_playback
+from wifi import Wifi
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("WEBUI_PORT", "80"))
 EQ_FILE = os.environ.get("EQ_FILE", "/data/crypt/eq.json")
 AIRPLAY_DIR = os.environ.get("AIRPLAY_DIR", "/data/opt/airplay")
 AIRPLAY = None
+WIFI = Wifi()
 
 
 def _eq_bands():
@@ -814,6 +816,10 @@ class Handler(BaseHTTPRequestHandler):
                 air = AIRPLAY.snapshot() if AIRPLAY is not None else {}
                 self._send(200, {"ok": True, "output": pb.get("output") or "jack", "airplay": air})
                 return
+            if raw_path == "/api/wifi":
+                scan = _qparam(qs, "scan") in ("1", "true", "yes")
+                self._send(200, WIFI.status(scan=scan))
+                return
             if raw_path == "/api/playlists":
                 tracks = _library()
                 self._send(200, {"playlists": PLAYLISTS.list([t["name"] for t in tracks])})
@@ -967,6 +973,24 @@ class Handler(BaseHTTPRequestHandler):
                 output = body.get("output")
                 pb, err = APP.set_output(output)
                 self._send(200 if not err else 400, {"ok": not err, "output": pb.get("output"), "error": err, "airplay": AIRPLAY.snapshot() if AIRPLAY else {}})
+                return
+            if path == "/api/wifi":
+                if body.get("disconnect"):
+                    WIFI.disconnect()
+                    self._send(200, WIFI.status())
+                    return
+                ssid = body.get("ssid") or body.get("name") or ""
+                passphrase = body.get("passphrase") or body.get("password") or ""
+                ok, err = WIFI.connect(ssid, passphrase)
+                if ok and AIRPLAY is not None and AIRPLAY.snapshot().get("enabled"):
+                    try:
+                        AIRPLAY.bounce()
+                    except Exception:
+                        pass
+                snap = WIFI.status()
+                snap["ok"] = ok
+                snap["error"] = err
+                self._send(200 if ok else 400, snap)
                 return
             if path == "/api/airplay":
                 err = ""

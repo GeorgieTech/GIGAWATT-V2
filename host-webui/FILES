@@ -19,6 +19,7 @@ crypt_wire.py
 cover.py
 airplay.py
 playback.py
+wifi.py
 manifest.webmanifest
 favicon.svg
 icon.png
