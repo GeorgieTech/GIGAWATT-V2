@@ -424,8 +424,15 @@ async function tick() {
 }
 async function loadCatalog() {
   try {
+    const local = await (await fetch("/api/library?local=1")).json();
+    if ((local.tracks || []).length) {
+      catalog = local.tracks;
+      renderLib();
+    }
+  } catch (e) {}
+  try {
     const data = await (await fetch("/api/library")).json();
-    catalog = data.tracks || [];
+    catalog = data.tracks || catalog;
     renderLib();
   } catch (e) {}
 }

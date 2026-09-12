@@ -474,7 +474,7 @@ class WaveIndex(object):
         }
 
     def ready(self, rel):
-        """True when a current waveform cache exists (no enqueue)."""
+        """True when a current waveform cache exists (no enqueue, no JSON parse)."""
         rel = (rel or "").replace("\\", "/").lstrip("/")
         full = _full_path(rel)
         if not full:
@@ -486,26 +486,19 @@ class WaveIndex(object):
             if cached and cached.get("v") == WAVE_VER and cached.get("l") and cached.get("m") and cached.get("h"):
                 return True
         try:
-            with open(path, "r") as fh:
-                data = json.load(fh)
-            return bool(
-                isinstance(data, dict)
-                and data.get("v") == WAVE_VER
-                and data.get("l")
-                and data.get("m")
-                and data.get("h")
-            )
-        except (OSError, ValueError, TypeError):
+            return os.path.isfile(path) and os.path.getsize(path) > 64
+        except OSError:
             return False
 
     def analyzing(self, rel):
         rel = (rel or "").replace("\\", "/").lstrip("/")
         if not rel:
             return False
-        if self.ready(rel):
-            return False
         with self.lock:
-            return rel in self.busy or rel in self.queue
+            queued = rel in self.busy or rel in self.queue
+        if not queued:
+            return False
+        return not self.ready(rel)
 
     def ensure(self, rel, front=False):
         rel = (rel or "").replace("\\", "/").lstrip("/")

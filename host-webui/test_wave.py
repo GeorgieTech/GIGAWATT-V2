@@ -127,5 +127,31 @@ class DropNameTests(unittest.TestCase):
             shutil.rmtree(d, ignore_errors=True)
 
 
+class ReadyStatTests(unittest.TestCase):
+    def test_ready_does_not_parse_json(self):
+        music = tempfile.mkdtemp(prefix="crypt-music-")
+        waves = tempfile.mkdtemp(prefix="crypt-waves-")
+        old_m, old_w = cryptwave.MUSIC_DIR, cryptwave.WAVE_DIR
+        cryptwave.MUSIC_DIR = music
+        cryptwave.WAVE_DIR = waves
+        try:
+            path = os.path.join(music, "a.wav")
+            with open(path, "wb") as fh:
+                fh.write(b"RIFF")
+            size, mtime = cryptwave._stat(path)
+            cache = cryptwave._cache_path("a.wav", size, mtime)
+            with open(cache, "w") as fh:
+                fh.write("{" + ("x" * 80) + "}")
+            idx = cryptwave.WaveIndex()
+            self.assertTrue(idx.ready("a.wav"))
+            self.assertFalse(idx.ready("missing.wav"))
+        finally:
+            cryptwave.MUSIC_DIR = old_m
+            cryptwave.WAVE_DIR = old_w
+            shutil.rmtree(music, ignore_errors=True)
+            shutil.rmtree(waves, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()
+

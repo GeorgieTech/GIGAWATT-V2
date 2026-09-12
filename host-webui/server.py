@@ -100,6 +100,14 @@ AUDIO_EXT = (".mp3", ".flac", ".opus", ".ogg", ".wav", ".m4a", ".aac")
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._+\- ()\[\]]+")
 _DISK_TTL = 20.0
 _DISK_CACHE = {"t": 0.0, "row": None}
+_LIB_TTL = 1.5
+_LIB_PAYLOAD = {"t": 0.0, "local": None, "full": None}
+
+
+def _bust_lib_cache():
+    _LIB_PAYLOAD["t"] = 0.0
+    _LIB_PAYLOAD["local"] = None
+    _LIB_PAYLOAD["full"] = None
 _PLAYBACK_TTL = 2.0
 _PLAYBACK_CACHE = {"t": 0.0, "row": None}
 MIME = {
@@ -363,6 +371,7 @@ class CryptApp(object):
         self.player.set_eq(_load_eq())
         PEERS.player = self.player
         self._status_refresh = 0.0
+        self._lib_refresh_at = 0.0
         self._refresh_busy = False
         PEERS.purge_unlinked_hot()
         self.evict_unlinked()
@@ -388,6 +397,8 @@ class CryptApp(object):
                 self.index = self.order.index(cur)
             elif self.index >= len(self.order):
                 self.index = len(self.order) - 1 if self.order else -1
+            self._lib_refresh_at = time.time()
+        _bust_lib_cache()
 
     def _safe_refresh(self):
         try:
@@ -950,8 +961,18 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if raw_path == "/api/library":
                 local_only = _qparam(qs, "local") in ("1", "true", "yes")
-                APP.refresh(local_only=local_only)
-                self._send(200, _library_payload(local_only=local_only, tracks=APP.catalog_snapshot()))
+                now = time.time()
+                key = "local" if local_only else "full"
+                hit = _LIB_PAYLOAD.get(key)
+                if hit and now - float(_LIB_PAYLOAD.get("t") or 0) < _LIB_TTL:
+                    self._send(200, hit)
+                    return
+                if now - float(getattr(APP, "_lib_refresh_at", 0) or 0) > 2.0 or not APP.catalog_snapshot():
+                    APP.refresh(local_only=local_only)
+                payload = _library_payload(local_only=local_only, tracks=APP.catalog_snapshot())
+                _LIB_PAYLOAD["t"] = now
+                _LIB_PAYLOAD[key] = payload
+                self._send(200, payload)
                 return
             if raw_path == "/api/peers":
                 snap = PEERS.snapshot()
@@ -1311,6 +1332,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {"ok": False, "error": str(exc)})
             return
         PEERS.drop_hot(name)
+        _bust_lib_cache()
         APP.refresh()
         # Same wave/cover/lyrics path used at play time — do not block the upload reply.
         APP.prep_track(name, front=False)

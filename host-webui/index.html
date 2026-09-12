@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.2.23</div>
+      <div class="sub">S2 · V2.2.24</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -304,12 +304,20 @@ function copyStamp(t) {
 async function ensureLib(force) {
   const now = Date.now();
   if (!force && now - libAt < 12000 && Object.keys(libByName).length) return;
-  try {
-    const lib = await (await fetch("/api/library")).json();
+  function ingest(lib) {
     const map = {};
     (lib.tracks || []).forEach((t) => { if (t && t.name) map[t.name] = t; });
+    if (!Object.keys(map).length) return;
     libByName = map;
-    libAt = now;
+    libAt = Date.now();
+  }
+  try {
+    const local = await fetch("/api/library?local=1").then((r) => r.json());
+    ingest(local);
+  } catch (e) {}
+  try {
+    const lib = await fetch("/api/library").then((r) => r.json());
+    ingest(lib);
   } catch (e) {}
 }
 function paintCopyJob(pct, title, detail, stay, state) {

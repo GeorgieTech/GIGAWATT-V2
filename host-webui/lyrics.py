@@ -292,10 +292,8 @@ class LyricsIndex(object):
                     continue
         cache_path = _cache_path(rel)
         try:
-            with open(cache_path, "r") as fh:
-                cached = json.load(fh)
-            return bool(isinstance(cached, dict) and cached.get("ok") and cached.get("lines"))
-        except (OSError, ValueError, TypeError):
+            return os.path.isfile(cache_path) and os.path.getsize(cache_path) > 8
+        except OSError:
             return False
 
     def lookup(self, rel, fetch=False, duration=0):
