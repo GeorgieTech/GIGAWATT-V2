@@ -2,7 +2,10 @@
 """Gigawatt web UI for the SHR-S2. Python 3.8 stdlib only. Binds :80."""
 from __future__ import print_function
 
-import cgi
+try:
+    import cgi
+except ImportError:
+    cgi = None
 import json
 import os
 import re
@@ -1263,6 +1266,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if length > MAX_UPLOAD + 4096:
             self._send(413, {"ok": False, "error": "too large"})
+            return
+        if cgi is None:
+            self._send(500, {"ok": False, "error": "upload requires cgi"})
             return
         env = {
             "REQUEST_METHOD": "POST",

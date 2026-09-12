@@ -1,5 +1,5 @@
 [Unit]
-Description=Gigawatt V2.2.22 TOSLINK player
+Description=Gigawatt V2.2.23 TOSLINK player
 After=network-online.target crypt-pulse.service crypt-hostname.service
 Wants=network-online.target crypt-pulse.service crypt-hostname.service
 

@@ -165,6 +165,7 @@ Version trail:
 | V2.2.20 | Karaoke fill is clipped to letter shapes (no glow bleed). |
 | V2.2.21 | EQ: two fader rows plus a live 20 Hz–20 kHz response curve. |
 | V2.2.22 | EQ Karaoke preset: rumble cut, presence lift 2–4 kHz. |
+| V2.2.23 | Merge #3–#6: hide waveform chrome, EQ in Settings (4-tab bar), library auto-analyze, no-cover visualizer. |
 
 Hard rules that did **not** change: no Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.179` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID. AirPlay 1 is on this host; AirPlay 2 is not.
 
