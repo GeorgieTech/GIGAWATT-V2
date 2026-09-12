@@ -88,7 +88,29 @@ class LatencyPllTests(unittest.TestCase):
                 "buffer_ms": 90.0, "sink_ms": sink, "latency_ms": 90.0 + sink,
             })
         self.assertTrue(st["locked"])
-        self.assertLess(st["jitter_ms"], 16.0)
+        self.assertLess(st["jitter_ms"], 24.0)
+
+    def test_lock_on_80ms_sawtooth_after_smooth(self):
+        hist = None
+        sinks = []
+        sink = 740.0
+        for i in range(40):
+            if i % 4 == 0:
+                sink = 790.0
+            else:
+                sink -= 22.0
+            if hist is None:
+                hist = sink
+            else:
+                hist = hist * 0.85 + sink * 0.15
+            sinks.append(hist)
+        st = player.new_pll_state(880.0, 90.0, 790.0)
+        for filt in sinks:
+            player.discipline_latency(st, {
+                "buffer_ms": 90.0, "sink_ms": filt, "latency_ms": 90.0 + filt,
+            })
+        self.assertTrue(st["locked"])
+        self.assertLess(st["jitter_ms"], 24.0)
 
 
 class FollowPlanTests(unittest.TestCase):

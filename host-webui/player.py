@@ -230,10 +230,10 @@ def discipline_latency(state, sample, capture=PLL_CAPTURE, hold=PLL_HOLD):
     state["sink_ms"] = sink
     state["n"] = int(state.get("n") or 0) + 1
     state["jitter_ms"] = jitter * 0.78 + abs(err) * 0.22
-    # Pulse TOSLINK is a noisy analog. 8 ms never locks when ALSA is 400 ms.
-    if (not locked) and state["n"] >= 8 and state["jitter_ms"] < 16.0:
+    # Pulse sink occupancy sawtooths ~80 ms on this 800 ms ALSA buffer.
+    if (not locked) and state["n"] >= 8 and state["jitter_ms"] < 24.0:
         state["locked"] = True
-    elif locked and state["jitter_ms"] > 28.0:
+    elif locked and state["jitter_ms"] > 48.0:
         state["locked"] = False
         state["n"] = 3
     state["accepted"] = True
@@ -788,10 +788,11 @@ class HostPlayer(object):
             jitter = 0.0
         self._pll = new_pll_state(lat, buf, sink)
         self._pll["jitter_ms"] = float(jitter or 0.0)
-        self._pll["locked"] = bool(saved) and float(jitter or 0.0) < 16.0
+        self._pll["locked"] = bool(saved) and float(jitter or 0.0) < 24.0
         self._lat_ms = self._pll["lat_ms"]
         self._buf_ms = self._pll["buf_ms"]
         self._sink_ms = self._pll["sink_ms"]
+        self._sink_filt = float(sink or 0.0) or None
         self._clock_on = False
         self._clock_saved = 0.0
         self._play_corr = 0.0
@@ -861,6 +862,18 @@ class HostPlayer(object):
         }
 
     def _apply_latency_sample(self, sample):
+        sink = float(sample.get("sink_ms") or 0.0)
+        buf = float(sample.get("buffer_ms") or 0.0)
+        prev = self._sink_filt
+        if prev is None or prev <= 0:
+            self._sink_filt = sink
+        else:
+            self._sink_filt = prev * 0.85 + sink * 0.15
+        sample = {
+            "buffer_ms": buf,
+            "sink_ms": self._sink_filt,
+            "latency_ms": buf + self._sink_filt,
+        }
         discipline_latency(self._pll, sample)
         self._lat_ms = self._pll["lat_ms"]
         self._buf_ms = self._pll["buf_ms"]
@@ -996,6 +1009,7 @@ class HostPlayer(object):
         self._play_corr = 0.0
         self._ppm = 0.0
         self._clock_on = False
+        self._sink_filt = None
         lat_s = max(0.15, (self._pll["lat_ms"] or 400.0) / 1000.0)
         self._sync_warm_until = self.t0 + lat_s + 0.12
         self.error = ""
