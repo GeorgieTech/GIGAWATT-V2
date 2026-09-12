@@ -530,7 +530,7 @@ function rowTrack(t, opts) {
   const remote = isRemote(t);
   if (t.name === playingName()) li.className = "on";
   if (remote) li.classList.add("away");
-  const bits = [t.artist, t.album].filter(Boolean);
+  const bits = [t.artist, t.album, t.kind, t.bitrate ? (t.bitrate + " kbps") : ""].filter(Boolean);
   const sub = bits.join(" · ");
   const chip = t.home_stamp ? ("<span class='home-chip " + (t.here ? "here" : "away") + "'>" + esc(t.home_stamp) + "</span>") : "";
   li.innerHTML = coverHTML(t.name || titleOf(t), titleOf(t), false, t.cover) +
