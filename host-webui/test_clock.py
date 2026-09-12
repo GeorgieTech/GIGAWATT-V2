@@ -45,11 +45,40 @@ class LatencyPllTests(unittest.TestCase):
         self.assertEqual(st["lat_ms"], 360.0)
 
     def test_clamps_huge_client_buffer(self):
-        row = player._normalize_latency(840.0, 717.0, 90)
+        row = player._normalize_latency(840.0, 400.0, 90)
         self.assertIsNotNone(row)
         self.assertEqual(row["buffer_ms"], 90.0)
-        self.assertAlmostEqual(row["sink_ms"], 717.0)
+        self.assertAlmostEqual(row["sink_ms"], 400.0)
         self.assertLess(row["latency_ms"], 900)
+
+    def test_rejects_48k_sink_balloon(self):
+        self.assertIsNone(player._normalize_latency(90.0, 1416.0, 90))
+        self.assertIsNone(player._normalize_latency(840.0, 800.0, 90))
+
+    def test_word_rate_is_96k(self):
+        self.assertEqual(player._word_rate(), 96000)
+        self.assertEqual(player._samples(1.0), 96000)
+
+    def test_load_clock_rejects_48k_file(self):
+        fd, path = tempfile.mkstemp(prefix="crypt-clk-")
+        os.close(fd)
+        orig = player.CLOCK_FILE
+        try:
+            player.CLOCK_FILE = path
+            with open(path, "w") as fh:
+                fh.write('{"latency_ms": 1574.57, "buffer_ms": 90.0, "sink_ms": 1419.58, "jitter_ms": 59.5}')
+            self.assertIsNone(player._load_clock_file())
+            with open(path, "w") as fh:
+                fh.write('{"latency_ms": 465.0, "buffer_ms": 90.0, "sink_ms": 375.0, "jitter_ms": 12.0}')
+            row = player._load_clock_file()
+            self.assertIsNotNone(row)
+            self.assertAlmostEqual(row["latency_ms"], 465.0)
+        finally:
+            player.CLOCK_FILE = orig
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
     def test_lock_survives_pulse_wobble(self):
         st = player.new_pll_state(400.0, 90.0, 310.0)

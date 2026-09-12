@@ -14,18 +14,19 @@ PULSE_SINK = os.environ.get("PULSE_SINK", "@DEFAULT_SINK@")
 FFMPEG_LOG = os.environ.get("FFMPEG_LOG", "/tmp/crypt-ffmpeg.log")
 PROGRESS_FILE = os.environ.get("PROGRESS_FILE", "/tmp/crypt-ff.progress")
 CLOCK_FILE = os.environ.get("CLOCK_FILE", "/data/crypt/clock.json")
-# DualLite is happier at 48 kHz; Pulse resamples onto the 96 kHz S/PDIF sink.
-RATE = os.environ.get("CRYPT_RATE", "48000")
+# Keep paplay at 96 kHz so Pulse does not switch imx-spdif to 48 kHz.
+# At 48 kHz the ALSA buffer doubles (~800 ms) and the Time Clock never locks.
+RATE = os.environ.get("CRYPT_RATE", "96000")
 # paplay WAV-on-stdin prebuffers seconds; raw PCM + this latency is the pause window.
 try:
     LATENCY_MS = str(max(40, min(250, int(os.environ.get("CRYPT_LATENCY_MS", "90")))))
 except ValueError:
     LATENCY_MS = "90"
-# imx-spdif ALSA buffer is ~200 ms; paplay's 90 ms request is only the stream target.
+# imx-spdif ALSA is 38400 frames ≈ 400 ms at 96 kHz; paplay 90 ms is the stream target.
 try:
-    CLOCK_PAD_MS = max(0, min(400, int(os.environ.get("CRYPT_CLOCK_PAD_MS", "270"))))
+    CLOCK_PAD_MS = max(0, min(400, int(os.environ.get("CRYPT_CLOCK_PAD_MS", "370"))))
 except ValueError:
-    CLOCK_PAD_MS = 270
+    CLOCK_PAD_MS = 370
 # AFC-style PLL: fast capture, then hold. Pulse latency is a noisy 10 MHz analog.
 try:
     PLL_CAPTURE = max(0.05, min(0.5, float(os.environ.get("CRYPT_PLL_CAPTURE", "0.28"))))
@@ -182,8 +183,8 @@ def _word_rate():
     try:
         rate = int(RATE)
     except (TypeError, ValueError):
-        return 48000
-    return rate if rate > 0 else 48000
+        return 96000
+    return rate if rate > 0 else 96000
 
 
 def _samples(sec, rate=None):
@@ -212,7 +213,7 @@ def discipline_latency(state, sample, capture=PLL_CAPTURE, hold=PLL_HOLD):
     buf = float(sample.get("buffer_ms") or 0.0)
     sink = float(sample.get("sink_ms") or 0.0)
     total = float(sample.get("latency_ms") or (buf + sink))
-    if total < 20 or total > 2000:
+    if total < 20 or total > 900:
         state["accepted"] = False
         return state
     err = total - state["lat_ms"]
@@ -356,8 +357,8 @@ def _usec_field(line, prefix):
 
 
 def _normalize_latency(buf_ms, sink_ms, paplay_ms=None):
-    """Keep paplay's requested buffer. Pulse often reports 800 ms+ when the
-    SPDIF sink has been switched to 48 kHz and the client underruns 90 ms."""
+    """Keep paplay's requested buffer. Drop 48 kHz SPDIF balloons (sink
+    ~800–1400 ms) so the PLL only tracks 96 kHz TOSLINK."""
     try:
         want = float(paplay_ms if paplay_ms is not None else _paplay_ms())
     except (TypeError, ValueError):
@@ -368,8 +369,11 @@ def _normalize_latency(buf_ms, sink_ms, paplay_ms=None):
         return None
     if buf_ms > want * 2.5:
         buf_ms = want
+    # 38400-frame ALSA buffer is ~400 ms at 96 kHz, ~800 ms at 48 kHz.
+    if sink_ms > 700:
+        return None
     total = buf_ms + sink_ms
-    if total < 60 or total > 2000:
+    if total < 60 or total > 900:
         return None
     return {"buffer_ms": buf_ms, "sink_ms": sink_ms, "latency_ms": total}
 
@@ -417,7 +421,7 @@ def _load_clock_file():
         lat = float(data.get("latency_ms") or 0)
         buf = float(data.get("buffer_ms") or 0)
         sink = float(data.get("sink_ms") or 0)
-        if lat < 60 or lat > 2000 or buf < 40:
+        if lat < 60 or lat > 900 or buf < 40 or sink > 700:
             return None
         return {
             "latency_ms": lat,
