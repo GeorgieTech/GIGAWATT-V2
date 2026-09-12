@@ -1,17 +1,17 @@
 #!/bin/bash
 # Copy this checkout onto one Gigawatt host and install.
-# Usage: scripts/push-host.sh 192.168.1.179
+# Usage: scripts/push-host.sh 192.168.1.142
 # SSH user is RPM. Do not put the password in this file.
 # Every host should get the same tag (currently v2.2.1).
 set -euo pipefail
 HOST="${1:-}"
 if [ -z "$HOST" ]; then
   echo "usage: scripts/push-host.sh <ip>" >&2
-  echo "example: scripts/push-host.sh 192.168.1.179" >&2
+  echo "example: scripts/push-host.sh 192.168.1.142" >&2
   exit 2
 fi
 case "$HOST" in
-  192.168.1.40|192.168.1.178|192.168.1.180)
+  192.168.1.40|192.168.1.178|192.168.1.179|192.168.1.180)
     echo "refusing $HOST" >&2
     exit 2
     ;;
@@ -31,8 +31,8 @@ while IFS= read -r name; do
   esac
   FILES+=("$UI/$name")
 done < "$LIST"
-SSH=(ssh -o IPQoS=none -o ConnectTimeout=20)
-SCP=(scp -O -o IPQoS=none -o ConnectTimeout=20)
+SSH=(ssh -o IPQoS=none -o ConnectTimeout=30)
+SCP=(scp -O -o IPQoS=none -o ConnectTimeout=30)
 echo "push $(cat "$UI/VERSION") -> RPM@$HOST"
 "${SCP[@]}" "${FILES[@]}" "RPM@$HOST:/tmp/"
 "${SCP[@]}" -r "$UI/airplay" "RPM@$HOST:/tmp/gigawatt-airplay"

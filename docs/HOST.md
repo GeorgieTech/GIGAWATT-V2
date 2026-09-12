@@ -1,10 +1,14 @@
-# Host hardware — 192.168.1.179 (CRYPT V1.1.7)
+# DualLite 192.168.1.179 — retired from this lab
+
+This chassis is **out of Gigawatt V2**. Do not SSH, deploy, `push-host.sh`, or link it. The physical unit stays for later; it is not a live target.
+
+Master music server is Quad **192.168.1.142**. See [HOST-142.md](HOST-142.md).
+
+Never **192.168.1.40**, **192.168.1.178**, **192.168.1.179**, or **192.168.1.180**.
+
+## Identity (historical)
 
 Factory product: **Savant S2 Host Rack Mountable, SHR-S2-00**.
-
-Do **not** use **192.168.1.40**, **192.168.1.178**, or **192.168.1.180**.
-
-## Identity
 
 | Field | Value |
 |---|---|
@@ -24,12 +28,12 @@ Do **not** use **192.168.1.40**, **192.168.1.178**, or **192.168.1.180**.
 - **1 GB** RAM + zram swap (~980 MB)
 - eMMC 14.7 GB: `/` on `mmcblk0p7` (3 GB), `/data` on `mmcblk0p2` (7.3 GB)
 - Ethernet `eth0` MAC `00:1A:AE:10:E4:09`
-- Wi-Fi `wlan0` TI wl18xx (unused in V1.1.7)
+- Wi-Fi `wlan0` TI wl18xx (unused)
 - Audio: Pulse sink `alsa_output.platform-sound-spdif.stereo-fallback` (TOSLINK / `imx-spdif`, 24-bit 96 kHz)
 
-This is **not** the SHC-2000 / SHC-S2 Quad (2 GB, 4 cores, `/data` on p3). Do not `dd` images between them. The four-host SHC-2000 farm (three workers + one TOSLINK playback) is planned in [CLUSTER.md](CLUSTER.md). It is not this DualLite.
+This is **not** the SHC-2000 / SHC-S2 Quad (2 GB, 4 cores, `/data` on p3). Do not `dd` images between them.
 
-## Software image (as converted)
+## Software image (as last converted)
 
 - Kernel 4.14.78
 - Savant Embedded Linux 20.04, build 697
@@ -38,4 +42,4 @@ This is **not** the SHC-2000 / SHC-S2 Quad (2 GB, 4 cores, `/data` on p3). Do no
 - OpenSSH 8.2, user `RPM`
 - `sudo` NOPASSWD includes `/usr/bin/env` and `/bin/systemctl`
 
-Savant `startupManager` and `nginx` are **masked**. Default target is `multi-user.target`.
+Savant `startupManager` and `nginx` were **masked**. Default target is `multi-user.target`.

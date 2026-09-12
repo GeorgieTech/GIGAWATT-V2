@@ -2,21 +2,21 @@
 
 Status: **Gigawatt V2.1.0** — linked hosts share libraries only. Unlink is sticky and **splits catalogs**: this jack lists only home files; copies pulled from that host are removed here. No auto-relink from Settings probe or boot hello. Copy-then-play onto **this** jack. Group play / Unison / CLOCK fan-out are retired and will be revisited later. Discovery is still CRYPT/1 multicast `239.18.20.1:41880` plus JSON broadcast fallback. `beacon.igmp_ok` / `igmp_error` stay sticky. libver is the catalog ETag. BEACON still has a unison bit; V2 always sends it false. Install the **same tag** on every host (`scripts/push-host.sh`).
 
-Targets: **192.168.1.179** (DualLite mule, UID `001AAE10E4090000`) and **192.168.1.142** (SHC-2000 Quad, UID `001AAE0739DB0000`). Never **.40 / .178 / .180**.
+Live target: **192.168.1.142** (SHC-2000 Quad, UID `001AAE0739DB0000`). DualLite **192.168.1.179** is retired — do not deploy or link it. A later SHC-2000 uses the same wire and **Link library**. Never **.40 / .178 / .179 / .180**.
 
 Python 3.8 **stdlib only**. No apt. No extra daemons. Copy-then-play stays. Unique by Savant UID.
 
-This file is the contract for the next grok **build + deploy**. The code in this branch already contains the wire codec and the dual-stack path; deploy both chassis in one window so one host is never speaking only JSON while the other has already dropped broadcast.
+This file is the contract for the next grok **build + deploy**. The code in this branch already contains the wire codec and the dual-stack path. When a second host is converted, push the same tag so both speak CRYPT/1.
 
 ## What we measured
 
-This cloud agent cannot complete a two-host LAN conversation. UDP probes to `:41880` on `.179` and `.142` from the agent VM time out (no path onto the lab subnet). Evidence is therefore:
+This cloud agent cannot complete a two-host LAN conversation. UDP probes to `:41880` from the agent VM time out (no path onto the lab subnet). Evidence is therefore:
 
 1. Unit tests on V1.1.10 `host-webui/test_peers.py` — **14 passed**.
 2. Static runtime of `peers.py` + `unison.py` as shipped in V1.1.10.
 3. New `host-webui/test_crypt_wire.py` round-trips for CRYPT/1.
 
-Lab confirmation after deploy — first-class check on **both** hosts (as `RPM`). `ss` plus a join-group recv of `CRPT` is required; send-to-group does not prove membership (`IP_MULTICAST_LOOP` is 0). Settings must show `beacon.igmp_error` if `IP_ADD_MEMBERSHIP` failed.
+Lab confirmation after deploy — first-class check on **192.168.1.142** (as `RPM`). `ss` plus a join-group recv of `CRPT` is required; send-to-group does not prove membership (`IP_MULTICAST_LOOP` is 0). Settings must show `beacon.igmp_error` if `IP_ADD_MEMBERSHIP` failed.
 
 ```sh
 ss -ulnp | grep 41880
@@ -139,7 +139,7 @@ offset  size  field
 16+n    …     payload   type-specific
 ```
 
-Checksum is **not** crypto. It only drops corruption. Lab LAN is trusted; blocked IPs still never join (`192.168.1.40/178/180`, off-LAN, localhost).
+Checksum is **not** crypto. It only drops corruption. Lab LAN is trusted; blocked IPs still never join (`192.168.1.40/178/179/180`, off-LAN, localhost).
 
 ### BEACON payload
 
@@ -168,7 +168,7 @@ Optional later: `libver u64 | tracks u16` when the catalog changes, so peers do 
 
 Copy-then-play is unchanged on purpose. Streaming into ffmpeg would fight the Time Clock and the optical jack. CLUSTER.md’s four-host farm still wants a separate console later; this protocol is what the chassis speak **to each other** until that console exists.
 
-Multicast is the right default on this VLAN. Unicast CLOCK to the linked peer IP is a fine extra (lower loss on cheap Wi-Fi) but both hosts are wired `eth0` today — group send is enough.
+Multicast is the right default on this VLAN. Unicast CLOCK to the linked peer IP is a fine extra (lower loss on cheap Wi-Fi) but the live host is wired `eth0` — group send is enough.
 
 ## Files grok must ship
 
@@ -184,36 +184,22 @@ Multicast is the right default on this VLAN. Unicast CLOCK to the linked peer IP
 
 Do **not** add pip packages, systemd units, or a second UDP port.
 
-## Deploy (both hosts, same session)
+## Deploy (live host; same tag on a later SHC-2000)
 
-Stdlib files only. SSH user `RPM`. `scp -O` from macOS. Password not in git.
-
-From repo root (add `crypt_wire.py` to the existing V1.1.10 copy list in [DEPLOY.md](DEPLOY.md)):
+Stdlib files only. SSH user `RPM`. `scp -O` from macOS. Password not in git. Use [DEPLOY.md](DEPLOY.md) / `scripts/push-host.sh`. DualLite **192.168.1.179** is refused.
 
 ```sh
-scp -O host-webui/crypt_wire.py host-webui/peers.py host-webui/unison.py host-webui/server.py \
-  host-webui/settings.html \
-  RPM@192.168.1.179:/tmp/ RPM@192.168.1.142:/tmp/
+scripts/push-host.sh 192.168.1.142
 ```
 
-On **each** host, as root via `sudo env bash`:
-
-```sh
-cp /tmp/crypt_wire.py /tmp/peers.py /tmp/unison.py /tmp/server.py /tmp/settings.html /data/www/
-chown RPM:RPM /data/www/crypt_wire.py /data/www/peers.py /data/www/unison.py /data/www/server.py /data/www/settings.html
-systemctl restart crypt-web.service
-```
-
-Restart **.179 and .142 within a minute of each other**. Pulse / hostname units stay.
+Pulse / hostname units stay.
 
 ### Checks
 
-1. `systemctl is-active crypt-web` is `active` on both.
-2. On **both** hosts: `ss -ulnp | grep 41880` shows crypt-web bound `0.0.0.0:41880`, and the join-group recv snippet above prints a `CRPT` datagram within 6 s. Optional: `grep 239.18.20.1 /proc/net/igmp`. Send success alone is not membership — Settings must show an IGMP join error if join failed, even when blades are Live via JSON broadcast.
-3. Settings → On the LAN still shows the other UID (JSON beacon covers mixed seconds).
-4. After both are up, `python3 -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1/api/hello').read()[:200])"` still returns `crypt:1`.
-5. Link remains two-way. Play a shelf track: still copy then TOSLINK.
-6. Optional Unison, same track, both optical jacks in earshot: follower PLL should **lock**. `drift_ms` should hold near 0, not hunt ±400 ms. A hallway between zones should not sound like two bands. Unison snapshot `via` is `udp` while CLOCK arrives; `http-clock` if no UDP CLOCK for >250 ms.
+1. `systemctl is-active crypt-web` is `active` on `.142`.
+2. `ss -ulnp | grep 41880` shows crypt-web bound `0.0.0.0:41880`, and the join-group recv snippet above prints a `CRPT` datagram within 6 s. Optional: `grep 239.18.20.1 /proc/net/igmp`. Send success alone is not membership — Settings must show an IGMP join error if join failed.
+3. `python3 -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1/api/hello').read()[:200])"` still returns `crypt:1`.
+4. When a second host is on the same tag, **Link library** is two-way. Play a shelf track: still copy then TOSLINK.
 
 ### Rollback
 
@@ -230,7 +216,7 @@ Copy the V1.1.10 `peers.py` / `unison.py` / `server.py` back and **delete** `/da
 
 ## Phase 2 (do not block this deploy)
 
-- Drop JSON broadcast once both hosts have been on CRYPT/1 for a week.
+- Drop JSON broadcast once a second host has been on CRYPT/1 for a week.
 - HTTP `Range` resume on `ensure()`.
 - Slim `/api/hello` (no gossip `seen` blob).
 - Prefetch **next** hot-cache file on the listening host (CLUSTER.md).

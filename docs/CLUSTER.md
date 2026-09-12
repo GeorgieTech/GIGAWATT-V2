@@ -1,12 +1,12 @@
 # Future plan — four SHC-2000 Gigawatt engines
 
-Status: **Gigawatt V2.1.0 on two live chassis + the original farm plan**. DualLite mule **192.168.1.179** and first SHC-2000 **192.168.1.142** run the same Gigawatt UI, share catalogs when **linked**, and each plays only on its own TOSLINK. Unlink splits catalogs and drops copies pulled from that host. An unlinked host also purges leftover copies at boot. Group play / Unison is out of V2. Path A multicast (`239.18.20.1:41880`) is proven: GS752TPP core `.10` is the IGMP querier, both hosts `igmp_ok`, peer `CRPT` PASS. Three more Quads are not on the LAN yet. Clone another converted host with `scripts/push-host.sh` from tag **v2.1.0** so versions stay identical. The wire is [PEER-PROTOCOL.md](PEER-PROTOCOL.md).
+Status: **Gigawatt V2.2.1 on one live chassis + the original farm plan**. Master music server is SHC-2000 **192.168.1.142**. DualLite mule **192.168.1.179** is **retired from this lab** — do not SSH, deploy, or link it. Link / unlink is unchanged and will be used when a second SHC-2000 joins. Group play / Unison is out of V2. Path A multicast (`239.18.20.1:41880`) is proven: GS752TPP core `.10` is the IGMP querier. Clone another converted host with `scripts/push-host.sh` from tag **v2.2.1** so versions stay identical. The wire is [PEER-PROTOCOL.md](PEER-PROTOCOL.md).
 
-Goal: three SHC-2000 hosts are **library + job workers**. A fourth SHC-2000 is the **TOSLINK playback cache** — it lists the whole fleet library, but only keeps a few files on its own eMMC while they are about to play, playing, or just played. A **separate application** (not this DualLite UI) sits in front, owns the fleet catalog, copies bytes when needed, fans research jobs out, and consumes the JSON those four hosts produce.
+Goal: three SHC-2000 hosts are **library + job workers**. A fourth SHC-2000 is the **TOSLINK playback cache** — it lists the whole fleet library, but only keeps a few files on its own eMMC while they are about to play, playing, or just played. A **separate application** (not this host UI) sits in front, owns the fleet catalog, copies bytes when needed, fans research jobs out, and consumes the JSON those four hosts produce.
 
 This is a job farm plus a sharded disk on the lab LAN. It is not Kubernetes, not Savant clustering, not one shared TOSLINK, not streaming, and not NAS/DLNA.
 
-Do **not** use **192.168.1.40** (Carrillos Resident), **192.168.1.178** (Gigawatt), or **192.168.1.180** (Giggwatt Beta1). Do not spoof Carrillos UID `001AAE1C6F5F0000`.
+Do **not** use **192.168.1.40** (Carrillos Resident), **192.168.1.178** (Gigawatt V1), **192.168.1.179** (retired DualLite), or **192.168.1.180** (Giggwatt Beta1). Do not spoof Carrillos UID `001AAE1C6F5F0000`.
 
 ## Picture
 
@@ -53,26 +53,26 @@ Workaround: **copy, then play**. Worker B keeps the home copy. Playback gets a t
 | Role | Chassis | Why |
 |---|---|---|
 | Playback | SHC-2000 / SHC-S2 Quad (2 GB, 4 cores) | TOSLINK to the room. Hot cache only. Keep Research off this box while music is up. |
-| Worker A / B / C | Same SHC-2000 class | Quad + 2 GB is the engine **and** the shelf. DualLite 1 GB is the current lab mule, not the farm. |
+| Worker A / B / C | Same SHC-2000 class | Quad + 2 GB is the engine **and** the shelf. |
 
-The live host at `.179` is an **SHR-S2-00 DualLite**. Do **not** `dd` that image onto an SHC-2000 (`/data` partition layout differs: DualLite `mmcblk0p2` vs Quad `p3`). Convert each SHC-2000 the same way we converted `.179`, then install CRYPT from this repo.
+Do **not** `dd` a DualLite image onto an SHC-2000 (`/data` partition layout differs: DualLite `mmcblk0p2` vs Quad `p3`). Convert each SHC-2000 the same way we converted `.142`, then install Gigawatt from this repo.
 
-Keep them on `192.168.1.0/24` with this project’s existing “never .40 / .178 / .180” rule.
+Keep them on `192.168.1.0/24` with this project’s existing “never .40 / .178 / .179 / .180” rule.
 
 | Name | IP | Chassis | Notes |
 |---|---|---|---|
-| DualLite mule | 192.168.1.179 | SHR-S2-00 DualLite | Lab original. UID `001AAE10E4090000` (stamp **E409**). Not one of the four. Holds most of the home copies today. |
-| First SHC-2000 | 192.168.1.142 | SHC-S2-00 Quad | Converted. Hostname `crypt-001aae0739db0000` (stamp **39DB**). Full CRYPT + TOSLINK. Fleet role (worker vs playback) still TBD. See [HOST-142.md](HOST-142.md). |
-| `crypt-play` / `crypt-work-b` / `crypt-work-c` | TBD | SHC-2000 | Not on the bench yet. |
+| Master music server | 192.168.1.142 | SHC-S2-00 Quad | Live. Hostname `crypt-001aae0739db0000` (stamp **39DB**). Full Gigawatt + TOSLINK. See [HOST-142.md](HOST-142.md). |
+| DualLite mule | 192.168.1.179 | SHR-S2-00 DualLite | **Retired.** Do not deploy or link. UID `001AAE10E4090000`. See [HOST.md](HOST.md). |
+| Next SHC-2000 | TBD | SHC-2000 | Not on the bench yet. Link library after it is on the same tag. |
 
 ## Shipped so far vs the brainstorm
 
-This file was written as a **four-host job farm** before the second chassis was even converted. The pair on the bench took a different first path: make the two hosts we have talk, share a library, and play. The farm plan is not cancelled. It is not what is running tonight.
+This file was written as a **four-host job farm** before the second chassis was even converted. The first path was two hosts talking, sharing a library, and playing. DualLite is now retired. The farm plan is not cancelled. It is not what is running tonight.
 
 ### The brainstorm (still the target)
 
 ```
-Separate funnel app  (not this DualLite UI)
+Separate funnel app  (not this host UI)
         │
         ▼
 Playback SHC-2000 — one TOSLINK to the room, hot cache now/next/last
@@ -85,42 +85,44 @@ Playback SHC-2000 — one TOSLINK to the room, hot cache now/next/last
 └───────────────┴────────────────┴────────────────┘
 ```
 
-- DualLite `.179` is a **mule**, not a farm member.
-- `.142` is the first of **four** SHC-2000s. Role (playback vs worker) assigned later.
+- DualLite `.179` is **retired from this lab**, not a farm member.
+- `.142` is the live master and the first of **four** SHC-2000s. Role (playback vs worker) assigned later.
 - One listening room, **one** optical jack. Workers do not make the DAC.
 - Files **sharded**: each `name` has one owner. Playback disk is a tiny hot cache, not a second library.
 - A **new app** owns the fleet catalog, copies bytes, fans Report / Wave / Lyrics to A/B/C.
 - No NAS, no ffmpeg HTTP, no Kubernetes, no Savant clustering.
 
-### What is actually live (V1.1.8–V1.1.17)
+### What is actually live (V2.2.1)
 
 ```
 Phone / laptop browser
-        │  same CRYPT UI on :80
+        │  Gigawatt UI on :80
         ▼
-┌──────────────────────┐     CRYPT/1 multicast 239.18.20.1:41880
-│ DualLite .179        │◄──────────────────────────────────────►┌──────────────────────┐
-│ SHR-S2-00  1 GB      │     HTTP copy-then-play / Unison fan    │ Quad .142            │
-│ stamp E409           │                                         │ SHC-S2-00  2 GB      │
-│ home of ~71 tracks   │     two-way peers.json                  │ stamp 39DB           │
-│ TOSLINK zone A       │     merged Library (home_stamp)         │ TOSLINK zone B       │
-└──────────────────────┘                                         └──────────────────────┘
+┌──────────────────────┐
+│ Quad .142            │
+│ SHC-S2-00  2 GB      │
+│ stamp 39DB           │
+│ master music server  │
+│ TOSLINK              │
+└──────────────────────┘
 ```
 
-| Brainstorm | Shipped on the two hosts |
-|---|---|
-| Separate funnel app owns the catalog | **No app yet.** Each host’s Library page merges shelves itself (`GET /api/library`, `?local=1` so they do not recurse). |
-| Four SHC-2000s, DualLite not in the farm | **Two chassis:** DualLite mule `.179` + first Quad `.142`. Three Quads still missing. |
-| One playback TOSLINK; workers silent | **Two TOSLINKs.** Each jack is its own DAC. Optional **Unison** plays the same track on both, CLOCK-steered. That was not in the original picture (original said do not treat three optical jacks as one DAC — Unison is two rooms, not one merged DAC). |
-| Files sharded across three worker eMMCs | **Mostly one shelf.** Home copies live on `.179` (E409). `.142` has a smaller home set (39DB) plus hot copies when it plays. Not a three-way shard. |
-| Playback `/data/music` is now/next/last only | **Copy-then-play exists**, but we do **not** yet evict to a 3-file cache or prefetch next. Copies can stay on the Quad. |
-| `CRYPT_PEERS` later for delete fan-out | **Two-way link** in `/data/crypt/peers.json`. Delete is still **owner-only** (no proxy delete, no fleet cache drop). |
-| Discovery somehow in the app | **Settings → On the LAN.** UID-unique blades, Live vs Linked. Third host would appear as its own row. |
-| HTTP JSON between app and hosts | **CRYPT/1** binary multicast (`239.18.20.1:41880`) for beacon + Unison CLOCK at 20 Hz. JSON broadcast still on as fallback. HTTP for hello, library, media copy, Play/Pause/Seek. |
-| Report / wave / lyrics fanned to A/B/C | **Still local** on whichever host you open. No job dispatcher. |
-| Funnel UI is a new codebase | **Same CRYPT web UI** on both boxes. |
+A second SHC-2000 is not on the LAN yet. **Link library** is still the way two hosts share catalogs when that chassis is converted.
 
-Version trail of the live pair:
+| Brainstorm | Shipped today |
+|---|---|
+| Separate funnel app owns the catalog | **No app yet.** This host’s Library page lists files on this disk. Linked shelves merge when a second host is linked (`GET /api/library`, `?local=1` so they do not recurse). |
+| Four SHC-2000s, DualLite not in the farm | **One chassis:** Quad `.142`. DualLite `.179` retired. Three Quads still missing. |
+| One playback TOSLINK; workers silent | **One TOSLINK** on `.142`. Group play / Unison is out of V2. |
+| Files sharded across three worker eMMCs | **One shelf.** Home copies live on `.142` (39DB). |
+| Playback `/data/music` is now/next/last only | **Copy-then-play exists** for a linked peer, but we do **not** yet evict to a 3-file cache or prefetch next. |
+| `CRYPT_PEERS` later for delete fan-out | **Two-way link** in `/data/crypt/peers.json` when a peer is linked. Delete is still **owner-only** (no proxy delete, no fleet cache drop). |
+| Discovery somehow in the app | **Settings → On the LAN.** UID-unique blades, Live vs Linked. A later host shows as its own row. |
+| HTTP JSON between app and hosts | **CRYPT/1** binary multicast (`239.18.20.1:41880`) for beacon. JSON broadcast still on as fallback. HTTP for hello, library, media copy, Play/Pause/Seek. |
+| Report / wave / lyrics fanned to A/B/C | **Still local** on `.142`. No job dispatcher. |
+| Funnel UI is a new codebase | **Same Gigawatt web UI** on each converted host. |
+
+Version trail:
 
 | Tag | What landed |
 |---|---|
@@ -143,22 +145,22 @@ Version trail of the live pair:
 | V2.2.0 | Cover Art Archive album art. Found cover on Playing/Library; visualizer if missing. |
 | V2.2.1 | Cover lookup no longer walks the whole library on every clock/status tick. Waveform keeps RAM to 4 caches. |
 
-Hard rules that did **not** change: no AirPlay / Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID.
+Hard rules that did **not** change: no Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.179` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID. AirPlay 1 is on this host; AirPlay 2 is not.
 
 ### Still ahead (brainstorm not started)
 
 - Convert two more SHC-2000 workers and a dedicated playback Quad.
 - Assign `.142` a farm role (it is “full CRYPT + TOSLINK” until then).
-- Shard new uploads (least-full / hash) so `.179` is not the only archive.
+- Shard new uploads (least-full / hash) so `.142` is not the only archive.
 - Hot-cache eviction (now / next / last) and prefetch of queue +1.
 - Delete fan-out: owner, then drop hot copies and `/data/crypt/*` JSON everywhere.
 - Funnel app: one catalog, copy-then-play onto **one** playback jack, Report×3, Wave on owner, Lyrics on C, MusicBrainz token bucket 1/s.
 - Drop JSON broadcast after CRYPT/1 has been on both hosts for a while ([PEER-PROTOCOL.md](PEER-PROTOCOL.md) phase 2 / issue #8).
-- Stop Settings 4 s `fleet?probe=1` poll (PR #45) so DualLite does not time out hello while linking.
+- Stop Settings 4 s `fleet?probe=1` poll (PR #45) so a host does not time out hello while linking.
 - Range-resume on `ensure()` copies (PR #42).
 - Group play / Unison, if we bring it back later. Not in V2.
 
-Until those four chassis exist, keep shipping CRYPT on `.179` and `.142` and treat the Picture at the top as the architecture we are walking toward, not what is racked today.
+Until those four chassis exist, keep shipping Gigawatt on `.142` and treat the Picture at the top as the architecture we are walking toward, not what is racked today.
 
 ## Library model — shard on workers, cache on playback
 
@@ -183,9 +185,9 @@ Playback’s Library page lists the **fleet catalog** (union of all workers), no
 | `present_on_play` | Whether playback currently has a hot copy |
 | `available` | Owner is up; otherwise show the row as unplayable, not a ghost |
 
-V1.1.8: `GET /api/library` on a viewer host merges shelves from `/data/crypt/peers.json` (with `?local=1` so shelves do not recurse). Play copies the file from the owner via `GET /api/media` then runs local ffmpeg. The SHC-2000 at `.142` lists DualLite `.179` this way; files stay on `.179`.
+V1.1.8: `GET /api/library` on a viewer host merges shelves from `/data/crypt/peers.json` (with `?local=1` so shelves do not recurse). Play copies the file from the owner via `GET /api/media` then runs local ffmpeg. That is how `.142` used to list DualLite `.179`; DualLite is no longer a shelf.
 
-V1.1.9: Settings → **On the LAN** lists every CRYPT chassis we hear, unique by Savant UID. UDP beacon on port 41880 plus `GET /api/hello`. **Live** = answering. **Linked** = this host lists it as a shelf. A third host shows up as its own blade; Link as shelf writes `peers.json`. `.40` / `.178` / `.180` never appear.
+V1.1.9: Settings → **On the LAN** lists every CRYPT chassis we hear, unique by Savant UID. UDP beacon on port 41880 plus `GET /api/hello`. **Live** = answering. **Linked** = this host lists it as a shelf. A later host shows up as its own blade; Link as shelf writes `peers.json`. `.40` / `.178` / `.179` / `.180` never appear.
 
 V1.1.10: A link is two-way (unison catalog). Each library row is stamped with the chassis that holds the file (`home_stamp`). Play still copies onto the listening host, then local ffmpeg → TOSLINK. Optional **Unison TOSLINK** fans Play/Pause/Seek/Next to linked hosts; the follower steers its Time Clock toward the conductor’s heard clock. No streaming.
 
@@ -259,9 +261,9 @@ Optional later: a `CRYPT_PEERS` list so playback can fan `drop_name` itself. Not
 
 ## Speed: what three workers buy
 
-| Work | One DualLite today | Four SHC-2000s + app |
+| Work | One Quad today | Four SHC-2000s + app |
 |---|---|---|
-| Library size | One DualLite eMMC | Up to three worker eMMCs (sharded, not mirrored) |
+| Library size | One Quad eMMC | Up to three worker eMMCs (sharded, not mirrored) |
 | Instagram reports for a **batch** of tracks | One Research at a time (~8–20 s) | Up to three reports in flight |
 | Waveform analyze | One ffmpeg job | Dedicated Quad; owner already has the file |
 | Wikipedia / essay HTTP | Sequential on the playback CPU | Off the TOSLINK box |
@@ -280,18 +282,18 @@ The coordinator should own a **global MusicBrainz token bucket** (1/s) so worker
 - Pulse/TOSLINK **enabled** on playback. Pulse can stay installed but unused on workers (or run, but nothing listens to their optical jacks for the main room).
 - Playback is the only host the listening room cares about. Workers may still bind :80 for the app and for lab debug.
 - Do not merge Savant UIDs. Each chassis keeps its own `001AAE…` hostname pin.
-- The funnel app is a **new** codebase (Mac or one more small service). It is not stuffed into DualLite `server.py`.
+- The funnel app is a **new** codebase (Mac or one more small service). It is not stuffed into `server.py`.
 - Never point playback ffmpeg at `http://crypt-work-b/…`. Copy first.
 
 ## Phases
 
-### 0 — Lab mule (done, then kept as a peer)
+### 0 — Lab mule (done, then retired)
 
-CRYPT on DualLite `.179` proved status, clock, report, lyrics, wave, upload, media GET, delete-with-cache. This box is **not** one of the four SHC-2000s. It is still on the LAN as the E409 shelf and a Unison TOSLINK zone.
+CRYPT on DualLite `.179` proved status, clock, report, lyrics, wave, upload, media GET, delete-with-cache. That chassis is **out of this project**. Do not SSH, deploy, or link it. A later SHC-2000 takes the second-host role.
 
 ### 1 — Convert three SHC-2000 workers
 
-First Quad is up at **192.168.1.142** (`crypt-001aae0739db0000`) with full CRYPT, not an empty worker. Convert two more the same way (do not clone DualLite eMMC). Install CRYPT. Give each a name and a lab IP. Confirm `GET /api/status`. No TOSLINK required on workers. Seed each worker with a **distinct** shard of test files.
+First Quad is up at **192.168.1.142** (`crypt-001aae0739db0000`) as the master music server, not an empty worker. Convert two more the same way (do not clone DualLite eMMC). Install Gigawatt. Give each a name and a lab IP. Confirm `GET /api/status`. No TOSLINK required on workers. Seed each worker with a **distinct** shard of test files.
 
 ### 2 — Convert the fourth as playback
 
@@ -304,7 +306,7 @@ Empty-ish `/data/music` (cache, not archive). TOSLINK into the room. EQ and Time
 - Play path: ensure hot copy on playback → `POST /api/play` → prefetch next.
 - Evict last-minus-one when cache holds now + next + last.
 - Dispatch: report → worker A (round-robin A/B/C if busy); wave → worker B (skip copy if B owns the file); lyrics → worker C.
-- Timeout: report 60 s, wave 150 s (existing DualLite analyze deadline), lyrics 15 s, copy bounded by file size / LAN.
+- Timeout: report 60 s, wave 150 s (existing analyze deadline), lyrics 15 s, copy bounded by file size / LAN.
 - UI: one packet per track (identity, owner, essay, caption, waveform handle, clock, `present_on_play`).
 - If a worker is down, mark its rows unavailable.
 
@@ -314,7 +316,7 @@ New uploads → least-full worker. Deletes → owner + playback hot copy + cache
 
 ### 5 — Batch Instagram queue
 
-Playlist or folder in → N reports out, three at a time. Persist results in the app (not on DualLite). Playback is never blocked by the queue. Research does not pull FLACs onto A.
+Playlist or folder in → N reports out, three at a time. Persist results in the app (not on the playback host). Playback is never blocked by the queue. Research does not pull FLACs onto A.
 
 ## Success
 
@@ -322,10 +324,10 @@ Playlist or folder in → N reports out, three at a time. Persist results in the
 - Playback `/data/music` stays a small hot cache, not a third copy of the whole library.
 - Library UI on the app shows every sharded track; a cold play copies from the owner, then TOSLINK starts.
 - Queue advances without a hole: next file is on playback before `on_end`.
-- Three reports in flight return faster than three serial reports on `.179`.
+- Three reports in flight return faster than three serial reports on one Quad.
 - Delete on the owner is followed by cache drops everywhere so no dead `/data/crypt/*` JSON.
 - WAN MusicBrainz stays ≤ 1 req/s fleet-wide.
-- `.40` / `.178` / `.180` never appear in the fleet list.
+- `.40` / `.178` / `.179` / `.180` never appear in the fleet list.
 
 ## Out of scope
 
@@ -334,7 +336,7 @@ Playlist or folder in → N reports out, three at a time. Persist results in the
 - SSC expanders / Relays (removed in V1.1.2).
 - Treating three optical jacks as one DAC.
 - Mirroring the full library onto every worker.
-- Running the funnel app **on** the DualLite S2.
+- Running the funnel app **on** the playback host.
 
 ## Open choices (decide when hardware is on the bench)
 
@@ -344,4 +346,4 @@ Playlist or folder in → N reports out, three at a time. Persist results in the
 - Whether playback itself may run Report when idle, or never.
 - Whether the funnel app is a local Mac tool first, or another rack host later.
 
-Until those four chassis exist, keep shipping CRYPT on `.179` and `.142` and treat the Picture at the top as the target architecture. The live pair is documented under **Shipped so far vs the brainstorm**.
+Until those four chassis exist, keep shipping Gigawatt on `.142` and treat the Picture at the top as the target architecture. The live host is documented under **Shipped so far vs the brainstorm**.

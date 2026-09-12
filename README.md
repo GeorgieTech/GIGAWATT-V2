@@ -2,22 +2,22 @@
 
 Repo: [`GIGAWATT-V2`](https://github.com/GeorgieTech/GIGAWATT-V2)
 
-A local TOSLINK music player on recycled Savant S2 hosts (DualLite SHR-S2-00 and Quad SHC-S2-00). Library on disk, web UI on port 80, optical out.
+A local TOSLINK music player on recycled Savant S2 hosts (SHC-S2-00 Quad). Library on disk, web UI on port 80, optical out.
 
 **Current release: [V2.2.1](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.1)** (`v2.2.1`). Previous: [V2.2.0](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.0) · [V2.1.2](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.1.2).
 
 This project is **not affiliated with Savant Systems**.
 
-Targets: **192.168.1.179** (DualLite S2 mule) and **192.168.1.142** (first SHC-2000). Do not use 192.168.1.40 (live Carrillos Resident), 192.168.1.178 (Gigawatt V1), or 192.168.1.180 (Giggwatt Beta1).
+Live target: **192.168.1.142** (SHC-S2-00 Quad, master music server). A second SHC-2000 will join later. Do not use 192.168.1.40 (live Carrillos Resident), 192.168.1.178 (Gigawatt V1), 192.168.1.179 (retired DualLite mule), or 192.168.1.180 (Giggwatt Beta1).
 
-Lineage: this is the V2 rewrite of the CRYPT DualLite/Quad lab player (`savant-host-s2-smart-home-processor-BETA1`). Wire discovery is still CRYPT/1 so the two lab boxes keep finding each other.
+Lineage: this is the V2 rewrite of the CRYPT DualLite/Quad lab player (`savant-host-s2-smart-home-processor-BETA1`). Wire discovery is still CRYPT/1 so a later host can **Link library** the same way.
 
 ## What V2.2.0 does
 
 - **Album covers from Cover Art Archive** (same source as the Jellyfin Cover Art Archive plugin). Local `cover.jpg` / embedded art first, then MusicBrainz release → coverartarchive.org. Playing shows the cover when found, otherwise the visualizer. Library thumbnails do the same.
 
 - **This jack or this browser.** Settings → Playback. TOSLINK is the default. This browser plays on the phone or laptop that opened the page (HTML5 audio from `/api/media`). Only one at a time.
-- **AirPlay 1 to this host.** Settings → AirPlay. Each chassis advertises its own name (`Gigawatt E409`, `Gigawatt 39DB`, …). You can rename it. iPhone/Mac → Pulse → TOSLINK. Same armv7 `shairport-sync` as Gigawatt Beta 2.
+- **AirPlay 1 to this host.** Settings → AirPlay. Each chassis advertises its own name (`Gigawatt 39DB`, …). You can rename it. iPhone/Mac → Pulse → TOSLINK. Same armv7 `shairport-sync` as Gigawatt Beta 2.
 - **Link shares libraries only.** Linked hosts merge catalogs both ways. Play copies the file onto *this* host, then this TOSLINK. Hosts do not play as a group and do not Unison.
 - **Unlink splits libraries.** Confirming Unlink drops the shelf, forgets that catalog, and removes copies that were pulled here from that host. This jack then lists only files that live on this disk. Home files are not deleted. Unlink stays unlinked until you tap **Link library**.
 - **Identical clone.** `scripts/push-host.sh <ip>` installs this tag on another converted S2. Every host on the fleet should report the same `version` from `/api/status`.
@@ -28,9 +28,9 @@ Lineage: this is the V2 rewrite of the CRYPT DualLite/Quad lab player (`savant-h
 - Play through the S2 **TOSLINK** jack (`ffmpeg` → `paplay` → Pulse → `imx-spdif`)
 - Host Time Clock so waveform, FFT, and karaoke follow audible TOSLINK time
 
-No Spotify, DLNA, NAS, or SSC expanders. DualLite + 1 GB RAM. Group / Unison play is out of this version and will be revisited later. AirPlay 1 is on; AirPlay 2 is not.
+No Spotify, DLNA, NAS, or SSC expanders. Group / Unison play is out of this version and will be revisited later. AirPlay 1 is on; AirPlay 2 is not.
 
-Live UI: [http://192.168.1.179/](http://192.168.1.179/) · [http://192.168.1.142/](http://192.168.1.142/)
+Live UI: [http://192.168.1.142/](http://192.168.1.142/)
 
 On a phone: open the UI in Safari/Chrome, then **Add to Home Screen**.
 
@@ -42,8 +42,8 @@ On a phone: open the UI in Safari/Chrome, then **Add to Home Screen**.
 
 ## Host
 
-- Hardware (DualLite S2): [docs/HOST.md](docs/HOST.md)
-- Hardware (first SHC-2000): [docs/HOST-142.md](docs/HOST-142.md)
+- Hardware (master SHC-2000): [docs/HOST-142.md](docs/HOST-142.md)
+- Retired DualLite mule: [docs/HOST.md](docs/HOST.md)
 - Deploy: [docs/DEPLOY.md](docs/DEPLOY.md)
 - Fleet plan: [docs/CLUSTER.md](docs/CLUSTER.md)
 - Wire: [docs/PEER-PROTOCOL.md](docs/PEER-PROTOCOL.md)
