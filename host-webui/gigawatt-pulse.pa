@@ -1,11 +1,6 @@
 #!/usr/bin/pulseaudio -nF
 # Gigawatt Pulse graph: Savant TOSLINK plus streaming-safe idle.
 # Do not replace savant-vcd.pa — include it, then stop immediate suspend.
-#
-# Hardware word clock is 96 kHz (imx-spdif). AirPlay ALAC is 44.1/48 kHz.
-# daemon.conf (GIGAWATT-AUDIO block) sets default-sample-rate=96000 and
-# alternate-sample-rate=48000 with speex-float-1 so Pulse remaps once at the
-# sink. Host Time Clock stays on library paplay only — not AirPlay.
 .fail
 .include /etc/pulse/savant-vcd.pa
 .nofail

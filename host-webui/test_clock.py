@@ -44,6 +44,97 @@ class LatencyPllTests(unittest.TestCase):
         self.assertFalse(st["accepted"])
         self.assertEqual(st["lat_ms"], 360.0)
 
+    def test_clamps_huge_client_buffer(self):
+        row = player._normalize_latency(840.0, 788.0, 90)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["buffer_ms"], 90.0)
+        self.assertAlmostEqual(row["sink_ms"], 788.0)
+        self.assertLess(row["latency_ms"], 1100)
+
+    def test_rejects_48k_sink_balloon(self):
+        self.assertIsNone(player._normalize_latency(90.0, 1416.0, 90))
+        self.assertIsNone(player._normalize_latency(840.0, 1416.0, 90))
+
+    def test_word_rate_is_96k(self):
+        self.assertEqual(player._word_rate(), 96000)
+        self.assertEqual(player._samples(1.0), 96000)
+
+    def test_load_clock_rejects_48k_file(self):
+        fd, path = tempfile.mkstemp(prefix="crypt-clk-")
+        os.close(fd)
+        orig = player.CLOCK_FILE
+        try:
+            player.CLOCK_FILE = path
+            with open(path, "w") as fh:
+                fh.write('{"latency_ms": 1574.57, "buffer_ms": 90.0, "sink_ms": 1419.58, "jitter_ms": 59.5}')
+            self.assertIsNone(player._load_clock_file())
+            with open(path, "w") as fh:
+                fh.write('{"latency_ms": 465.0, "buffer_ms": 90.0, "sink_ms": 375.0, "jitter_ms": 12.0}')
+            row = player._load_clock_file()
+            self.assertIsNotNone(row)
+            self.assertAlmostEqual(row["latency_ms"], 465.0)
+        finally:
+            player.CLOCK_FILE = orig
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+    def test_lock_survives_pulse_wobble(self):
+        st = player.new_pll_state(400.0, 90.0, 310.0)
+        for i in range(12):
+            sink = 310.0 + (5.0 if i % 2 else -5.0)
+            player.discipline_latency(st, {
+                "buffer_ms": 90.0, "sink_ms": sink, "latency_ms": 90.0 + sink,
+            })
+        self.assertTrue(st["locked"])
+        self.assertLess(st["jitter_ms"], 24.0)
+
+    def test_lock_on_80ms_sawtooth_after_smooth(self):
+        hist = None
+        sinks = []
+        sink = 740.0
+        for i in range(40):
+            if i % 4 == 0:
+                sink = 790.0
+            else:
+                sink -= 22.0
+            if hist is None:
+                hist = sink
+            else:
+                hist = hist * 0.85 + sink * 0.15
+            sinks.append(hist)
+        st = player.new_pll_state(880.0, 90.0, 790.0)
+        for filt in sinks:
+            player.discipline_latency(st, {
+                "buffer_ms": 90.0, "sink_ms": filt, "latency_ms": 90.0 + filt,
+            })
+        self.assertTrue(st["locked"])
+        self.assertLess(st["jitter_ms"], 24.0)
+
+
+class ToslinkClockGateTests(unittest.TestCase):
+    def test_library_jack_keeps_lock(self):
+        ck = {"locked": True, "phase": "locked", "jitter_ms": 6.0, "ppm": 1.0}
+        out = player.toslink_clock(ck)
+        self.assertTrue(out["locked"])
+        self.assertEqual(out["phase"], "locked")
+        self.assertEqual(out["jitter_ms"], 6.0)
+
+    def test_airplay_forces_idle(self):
+        ck = {"locked": True, "phase": "locking", "jitter_ms": 40.0, "ppm": 12.0}
+        out = player.toslink_clock(ck, airplay_active=True)
+        self.assertFalse(out["locked"])
+        self.assertEqual(out["phase"], "idle")
+        self.assertEqual(out["jitter_ms"], 0.0)
+        self.assertFalse(out["warming"])
+
+    def test_browser_output_forces_idle(self):
+        ck = {"locked": True, "phase": "locked"}
+        out = player.toslink_clock(ck, output="browser", source="browser")
+        self.assertFalse(out["locked"])
+        self.assertEqual(out["phase"], "idle")
+
 
 class FollowPlanTests(unittest.TestCase):
     def test_hold_when_close(self):
@@ -201,8 +292,6 @@ class ProgressAndSamplesTests(unittest.TestCase):
     def test_samples_at_48k(self):
         self.assertEqual(player._samples(1.0, 48000), 48000)
         self.assertEqual(player._samples(0.020833, 48000), 1000)
-        self.assertEqual(player._stream_rate(), 48000)
-        self.assertEqual(player._word_rate(), 96000)
 
     def test_progress_prefers_last_out_time_us(self):
         fd, path = tempfile.mkstemp(prefix="crypt-ff-")

@@ -260,6 +260,11 @@ class LinkTests(unittest.TestCase):
             self.assertEqual(cfg["shelves"], [])
             self.assertIn("001AAE10E4090000", cfg["declined"])
             self.assertIn("http://192.168.1.179", cfg["declined"])
+            with open(seen) as fh:
+                seen_disk = json.load(fh)
+            self.assertEqual(seen_disk.get("hosts") or [], [])
+            ghost = [h for h in idx.fleet()["hosts"] if h.get("uid") == "001AAE10E4090000"]
+            self.assertEqual(ghost, [])
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
@@ -296,8 +301,7 @@ class LinkTests(unittest.TestCase):
             linked = [h for h in fleet["hosts"] if h.get("linked") and not h.get("self")]
             self.assertEqual(linked, [])
             still = [h for h in fleet["hosts"] if h.get("uid") == "001AAE10E4090000"]
-            self.assertTrue(still)
-            self.assertFalse(still[0]["linked"])
+            self.assertEqual(still, [])
             ok, err = idx.link("http://192.168.1.179", notify=False)
             self.assertTrue(ok, err)
             self.assertEqual(len(peers.load_config(path)["shelves"]), 1)
@@ -356,6 +360,63 @@ class LinkTests(unittest.TestCase):
             leftover = idx.purge_unlinked_hot()
             self.assertEqual(leftover, ["Glow.flac", "ShelfOnly.flac"])
             self.assertEqual(idx.take_pending_evict(), leftover)
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    def test_boot_scrubs_declined_seen_ghost(self):
+        folder = tempfile.mkdtemp(prefix="crypt-scrub-")
+        try:
+            path = os.path.join(folder, "peers.json")
+            seen = os.path.join(folder, "seen.json")
+            with open(path, "w") as fh:
+                json.dump({
+                    "id": "crypt-viewer",
+                    "shelves": [],
+                    "declined": ["001AAE10E4090000", "http://192.168.1.179"],
+                }, fh)
+            with open(seen, "w") as fh:
+                json.dump({"hosts": [{
+                    "id": "sav-001aae10e4090000",
+                    "uid": "001AAE10E4090000",
+                    "ip": "192.168.1.179",
+                    "url": "http://192.168.1.179",
+                    "model": "SHR-S2-00",
+                    "last_seen": time.time() - 3600,
+                }]}, fh)
+            idx = peers.PeerIndex(path=path, http=lambda url: {}, seen_path=seen, hot_path=os.path.join(folder, "hot.json"))
+            ghost = [h for h in idx.fleet()["hosts"] if h.get("uid") == "001AAE10E4090000"]
+            self.assertEqual(ghost, [])
+            with open(seen) as fh:
+                self.assertEqual(json.load(fh).get("hosts") or [], [])
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    def test_declined_live_host_can_still_be_linked(self):
+        folder = tempfile.mkdtemp(prefix="crypt-live-")
+        try:
+            path = os.path.join(folder, "peers.json")
+            seen = os.path.join(folder, "seen.json")
+            with open(path, "w") as fh:
+                json.dump({
+                    "id": "crypt-viewer",
+                    "shelves": [],
+                    "declined": ["001AAE10E4090000"],
+                }, fh)
+            idx = peers.PeerIndex(path=path, http=lambda url: {}, seen_path=seen, hot_path=os.path.join(folder, "hot.json"))
+            idx._remember({
+                "id": "crypt-001aae10e4090000",
+                "uid": "001AAE10E4090000",
+                "ip": "192.168.1.179",
+                "url": "http://192.168.1.179",
+                "last_seen": time.time(),
+                "via": ["beacon"],
+            }, persist=True)
+            live = [h for h in idx.roster() if h.get("uid") == "001AAE10E4090000"]
+            self.assertEqual(len(live), 1)
+            self.assertFalse(live[0].get("linked"))
+            if os.path.isfile(seen):
+                with open(seen) as fh:
+                    self.assertEqual(json.load(fh).get("hosts") or [], [])
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 

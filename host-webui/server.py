@@ -15,7 +15,8 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
-from player import HostPlayer, MUSIC_DIR, EQ_BANDS, EQ_PRESETS, EQ_Q, clamp_eq, eq_region
+from player import HostPlayer, MUSIC_DIR, EQ_BANDS, EQ_PRESETS, EQ_Q, clamp_eq, eq_region, toslink_clock
+from queueing import sanitize_requester, insert_play_next
 from library import CATALOG, PLAYLISTS, GENRES
 from wave import WAVES
 from lyrics import LYRICS
@@ -24,12 +25,14 @@ from peers import PEERS, VERSION, identity
 from cover import COVERS
 from airplay import AirPlay
 from playback import load_playback, save_playback
+from wifi import Wifi
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("WEBUI_PORT", "80"))
 EQ_FILE = os.environ.get("EQ_FILE", "/data/crypt/eq.json")
 AIRPLAY_DIR = os.environ.get("AIRPLAY_DIR", "/data/opt/airplay")
 AIRPLAY = None
+WIFI = Wifi()
 
 
 def _eq_bands():
@@ -329,6 +332,7 @@ class CryptApp(object):
         self.index = -1
         self.tracks = []
         self.order = []
+        self.requests = {}
         self.player = HostPlayer(on_end=self._on_end)
         self.player.set_eq(_load_eq())
         PEERS.player = self.player
@@ -350,6 +354,9 @@ class CryptApp(object):
             self.order = [n for n in self.order if n in name_set]
             if not self.order:
                 self.order = list(names)
+            self.requests = dict(
+                (n, self.requests[n]) for n in self.requests if n in name_set
+            )
             cur = self.player.snapshot().get("name") or ""
             if cur in self.order:
                 self.index = self.order.index(cur)
@@ -362,14 +369,27 @@ class CryptApp(object):
         except Exception:
             traceback.print_exc()
         finally:
-            self._refresh_busy = False
+            with self.lock:
+                self._refresh_busy = False
 
     def catalog_snapshot(self):
         with self.lock:
             return list(self.tracks)
 
-    def _upcoming(self, order, tracks, idx, limit=5):
+    def _queue_item(self, t, name, requests):
+        row = requests.get(name) or {}
+        return {
+            "name": t.get("name") or name,
+            "size": t.get("size") or 0,
+            "title": t.get("title") or "",
+            "artist": t.get("artist") or "",
+            "cover": t.get("cover") or "",
+            "requested_by": row.get("by") or "",
+        }
+
+    def _upcoming(self, order, tracks, idx, limit=5, requests=None):
         by_name = dict((t["name"], t) for t in tracks)
+        requests = requests or {}
         n = len(order)
         if n == 0:
             return [], 0
@@ -377,7 +397,7 @@ class CryptApp(object):
             items = []
             for name in order[:limit]:
                 t = by_name.get(name) or {"name": name, "size": 0}
-                items.append({"name": t["name"], "size": t.get("size") or 0, "title": t.get("title") or ""})
+                items.append(self._queue_item(t, name, requests))
             return items, n
         if n == 1:
             return [], 0
@@ -385,24 +405,38 @@ class CryptApp(object):
         for i in range(1, n):
             name = order[(idx + i) % n]
             t = by_name.get(name) or {"name": name, "size": 0}
-            items.append({"name": t["name"], "size": t.get("size") or 0, "title": t.get("title") or ""})
+            items.append(self._queue_item(t, name, requests))
             if len(items) >= limit:
                 break
         return items, n - 1
 
     def status(self):
         now = time.time()
-        # Never block the 1 Hz Playing poll on a peer library merge.
-        if now - self._status_refresh >= 8.0 and not self._refresh_busy:
-            self._status_refresh = now
-            self._refresh_busy = True
+        launch = False
+        with self.lock:
+            if now - self._status_refresh >= 8.0 and not self._refresh_busy:
+                self._status_refresh = now
+                self._refresh_busy = True
+                launch = True
+        if launch:
             threading.Thread(target=self._safe_refresh, name="status-refresh", daemon=True).start()
         snap = self.player.snapshot()
+        ap = AIRPLAY.snapshot() if AIRPLAY is not None else {
+            "available": False, "enabled": False, "active": False,
+            "name": "", "title": "", "artist": "", "album": "", "client": "", "error": "",
+        }
+        snap["clock"] = toslink_clock(
+            snap.get("clock"),
+            airplay_active=bool(ap.get("active")),
+            output=_playback_cached().get("output") or "jack",
+            source=snap.get("source") or "jack",
+        )
         with self.lock:
             tracks = list(self.tracks)
             order = list(self.order)
             idx = self.index
-        queue, queue_total = self._upcoming(order, tracks, idx, 5)
+            requests = dict(self.requests)
+        queue, queue_total = self._upcoming(order, tracks, idx, 24, requests)
         eq = clamp_eq(snap.get("eq"))
         me = identity()
         playing_name = snap.get("name") or ""
@@ -413,28 +447,6 @@ class CryptApp(object):
                 cover_album = t.get("album") or ""
                 cover_title = t.get("title") or ""
                 break
-        air = AIRPLAY.snapshot() if AIRPLAY is not None else {
-            "available": False, "enabled": False, "active": False,
-            "name": "", "title": "", "artist": "", "album": "", "client": "", "error": "",
-        }
-        # Isolate Host Time Clock from AirPlay: status still reports airplay
-        # metadata, but player.clock stays idle so Playing Pro does not chase
-        # a 48 kHz transport against the 96 kHz word clock.
-        if air.get("active"):
-            snap = dict(snap)
-            snap["playing"] = False
-            snap["paused"] = False
-            snap["name"] = ""
-            snap["position"] = 0
-            snap["playback"] = 0
-            snap["duration"] = 0
-            snap["clock"] = _idle_clock("airplay")
-            playing_name = ""
-        elif isinstance(snap.get("clock"), dict):
-            snap = dict(snap)
-            ck = dict(snap.get("clock") or {})
-            ck["scope"] = "library"
-            snap["clock"] = ck
         return {
             "host": me.get("host") or socket.gethostname(),
             "model": me.get("model") or "SHR-S2-00",
@@ -447,6 +459,7 @@ class CryptApp(object):
             "count": len(tracks),
             "queue": queue,
             "queue_total": queue_total,
+            "requested_by": ((requests.get(playing_name) or {}).get("by") or ""),
             "eq": eq,
             "eq_preset": _match_preset(eq),
             "disk": _disk(),
@@ -459,37 +472,20 @@ class CryptApp(object):
                 title=cover_title,
             ),
             "output": _playback_cached().get("output") or "jack",
-            "airplay": air,
-            "clock_scope": "airplay" if air.get("active") else "library",
+            "airplay": ap,
         }
 
     def clock(self):
-        # Host Time Clock is library/jack only. AirPlay has its own 48 kHz
-        # transport clock; do not feed PLL numbers into the Playing Pro panel.
-        if _airplay_active():
-            return {
-                "ok": True,
-                "scope": "airplay",
-                "player": {
-                    "playing": False,
-                    "paused": False,
-                    "name": "",
-                    "position": 0,
-                    "playback": 0,
-                    "duration": 0,
-                    "clock": _idle_clock("airplay"),
-                },
-                "volume": self.player.volume(),
-                "airplay": True,
-            }
         snap = self.player.snapshot()
-        ck = snap.get("clock") or {}
-        if isinstance(ck, dict):
-            ck = dict(ck)
-            ck["scope"] = "library"
+        ap = AIRPLAY.snapshot() if AIRPLAY is not None else {}
+        ck = toslink_clock(
+            snap.get("clock"),
+            airplay_active=bool(ap.get("active")),
+            output=_playback_cached().get("output") or "jack",
+            source=snap.get("source") or "jack",
+        )
         return {
             "ok": True,
-            "scope": "library",
             "player": {
                 "playing": snap.get("playing"),
                 "paused": snap.get("paused"),
@@ -500,7 +496,6 @@ class CryptApp(object):
                 "clock": ck,
             },
             "volume": self.player.volume(),
-            "airplay": False,
         }
 
     def lyrics(self, name, fetch=False, duration=0):
@@ -618,8 +613,13 @@ class CryptApp(object):
                 self.order = list(names)
             if name not in self.order:
                 return False
+            prev = ""
+            if 0 <= self.index < len(self.order):
+                prev = self.order[self.index]
             self.index = self.order.index(name)
             nxt = self.order[self.index + 1] if self.index + 1 < len(self.order) else ""
+            if prev and prev != name:
+                self.requests.pop(prev, None)
         ok = self.player.play(name, start=start, silent=self._silent())
         if ok:
             WAVES.ensure(name, front=True)
@@ -666,9 +666,12 @@ class CryptApp(object):
         with self.lock:
             if not self.order:
                 return False
+            prev = self.order[self.index] if 0 <= self.index < len(self.order) else ""
             self.index = 0 if self.index < 0 else (self.index + 1) % len(self.order)
             name = self.order[self.index]
             nxt = self.order[self.index + 1] if self.index + 1 < len(self.order) else ""
+            if prev and prev != name:
+                self.requests.pop(prev, None)
         return self._start_name(name, 0.0, nxt)
 
     def prev_track(self):
@@ -676,10 +679,37 @@ class CryptApp(object):
         with self.lock:
             if not self.order:
                 return False
+            prev = self.order[self.index] if 0 <= self.index < len(self.order) else ""
             self.index = 0 if self.index < 0 else (self.index - 1) % len(self.order)
             name = self.order[self.index]
             nxt = self.order[self.index + 1] if self.index + 1 < len(self.order) else ""
+            if prev and prev != name:
+                self.requests.pop(prev, None)
         return self._start_name(name, 0.0, nxt)
+
+    def queue_next(self, name, by=""):
+        name = str(name or "").strip()
+        by = sanitize_requester(by)
+        if not name:
+            return False
+        self.refresh()
+        snap = self.player.snapshot()
+        idle = not (snap.get("playing") or snap.get("paused"))
+        with self.lock:
+            names = [t["name"] for t in self.tracks]
+            if name not in names:
+                return False
+            if not self.order:
+                self.order = list(names)
+            self.order, self.index = insert_play_next(self.order, self.index, name)
+            if name not in self.order:
+                self.order.insert(0, name)
+            self.requests[name] = {"by": by, "at": time.time()}
+        if idle:
+            return self.play_name(name)
+        WAVES.ensure(name)
+        COVERS.ensure(name)
+        return True
 
     def _on_end(self):
         self.next_track()
@@ -717,6 +747,8 @@ class CryptApp(object):
             return False
         CATALOG.drop_name(rel)
         PLAYLISTS.remove_everywhere(rel)
+        with self.lock:
+            self.requests.pop(rel, None)
         if refresh:
             self.refresh()
         return True
@@ -771,51 +803,7 @@ APP = CryptApp()
 
 
 def _on_airplay_begin():
-    # Library Host Time Clock is for jack tracks only. Stop paplay so AirPlay
-    # owns TOSLINK; Pulse remaps AirPlay 48 kHz onto the fixed 96 kHz SPDIF.
     APP.stop()
-    try:
-        from airplay import prepare_toslink_for_airplay
-        prepare_toslink_for_airplay()
-    except Exception:
-        pass
-
-
-def _airplay_active():
-    try:
-        return bool(AIRPLAY is not None and AIRPLAY.snapshot().get("active"))
-    except Exception:
-        return False
-
-
-def _idle_clock(phase="airplay"):
-    """Host Time Clock payload when the library jack is not the timing source."""
-    try:
-        from player import _word_rate, _stream_rate
-        word = _word_rate()
-        stream = _stream_rate()
-    except Exception:
-        word, stream = 96000, 48000
-    return {
-        "heard": 0.0,
-        "playback": 0.0,
-        "heard_samples": 0,
-        "playback_samples": 0,
-        "offset_ms": 0,
-        "latency_ms": 0.0,
-        "buffer_ms": 0.0,
-        "sink_ms": 0.0,
-        "paplay_ms": 0,
-        "drift_ms": 0,
-        "jitter_ms": 0.0,
-        "ppm": 0.0,
-        "locked": False,
-        "phase": phase,
-        "rate": word,
-        "stream_rate": stream,
-        "scope": "airplay" if phase == "airplay" else "idle",
-        "warming": False,
-    }
 
 
 AIRPLAY = AirPlay(
@@ -897,6 +885,10 @@ class Handler(BaseHTTPRequestHandler):
                 pb = _playback_cached()
                 air = AIRPLAY.snapshot() if AIRPLAY is not None else {}
                 self._send(200, {"ok": True, "output": pb.get("output") or "jack", "airplay": air})
+                return
+            if raw_path == "/api/wifi":
+                scan = _qparam(qs, "scan") in ("1", "true", "yes")
+                self._send(200, WIFI.status(scan=scan))
                 return
             if raw_path == "/api/playlists":
                 tracks = _library()
@@ -1009,6 +1001,16 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 self._send(200 if ok else 400, {"ok": ok, "error": APP.player.error})
                 return
+            if path == "/api/queue":
+                name = (body.get("name") or "").strip()
+                by = body.get("by") or body.get("requested_by") or ""
+                ok = APP.queue_next(name, by)
+                self._send(200 if ok else 400, {
+                    "ok": ok,
+                    "error": "" if ok else (APP.player.error or "not found"),
+                    "by": sanitize_requester(by),
+                })
+                return
             if path == "/api/playlists":
                 try:
                     payload = _playlist_action(body)
@@ -1051,6 +1053,24 @@ class Handler(BaseHTTPRequestHandler):
                 output = body.get("output")
                 pb, err = APP.set_output(output)
                 self._send(200 if not err else 400, {"ok": not err, "output": pb.get("output"), "error": err, "airplay": AIRPLAY.snapshot() if AIRPLAY else {}})
+                return
+            if path == "/api/wifi":
+                if body.get("disconnect"):
+                    WIFI.disconnect()
+                    self._send(200, WIFI.status())
+                    return
+                ssid = body.get("ssid") or body.get("name") or ""
+                passphrase = body.get("passphrase") or body.get("password") or ""
+                ok, err = WIFI.connect(ssid, passphrase)
+                if ok and AIRPLAY is not None and AIRPLAY.snapshot().get("enabled"):
+                    try:
+                        AIRPLAY.bounce()
+                    except Exception:
+                        pass
+                snap = WIFI.status()
+                snap["ok"] = ok
+                snap["error"] = err
+                self._send(200 if ok else 400, snap)
                 return
             if path == "/api/airplay":
                 err = ""

@@ -14,15 +14,12 @@ META_PIPE = "/tmp/gigawatt-airplay.meta"
 NAME_RE = re.compile(r"^[A-Za-z0-9._ -]{1,50}$")
 DEFAULT_NAME = "Gigawatt"
 
+# Same stuffing as Gigawatt Beta2 (worked). V2 auto/soxr + 0.5 s buffer skipped on TOSLINK.
 CONF_TEMPLATE = """general = {
   name = "%s";
-  interpolation = "auto";
+  interpolation = "basic";
   output_backend = "pa";
-  ignore_volume_control = "yes";
-  drift_tolerance_in_seconds = 0.012;
-  resync_threshold_in_seconds = 0.150;
-  audio_backend_buffer_desired_length_in_seconds = 0.50;
-  audio_backend_buffer_interpolation_threshold_in_seconds = 0.075;
+  ignore_volume_control = "no";
   port = 5000;
 };
 sessioncontrol = {
@@ -39,78 +36,6 @@ pa = {
   application_name = "Gigawatt AirPlay";
 };
 """
-
-# Pulse daemon.conf fragment. Savant SPDIF is fixed at 96 kHz; AirPlay ALAC
-# lands at 44.1/48 kHz. Keep the hardware word clock at 96 and let Pulse
-# speex-remap once at the sink edge (do not fight Host Time Clock).
-PULSE_DAEMON_SNIPPET = """
-# GIGAWATT-AUDIO-BEGIN
-# TOSLINK word clock stays 96 kHz (imx-spdif). AirPlay / library streams may
-# be 44.1 or 48 kHz; Pulse remaps with speex onto the Savant sink.
-default-sample-rate = 96000
-alternate-sample-rate = 48000
-resample-method = speex-float-1
-avoid-resampling = no
-default-fragments = 8
-default-fragment-size-msec = 50
-high-priority = yes
-# GIGAWATT-AUDIO-END
-"""
-
-
-def ensure_pulse_daemon_conf(path="/etc/pulse/daemon.conf"):
-    """Install / refresh the 48→96 remap block. Safe to call on every push."""
-    try:
-        with open(path, "r") as fh:
-            text = fh.read()
-    except OSError:
-        return False
-    begin = "# GIGAWATT-AUDIO-BEGIN"
-    end = "# GIGAWATT-AUDIO-END"
-    block = PULSE_DAEMON_SNIPPET.strip() + "\n"
-    if begin in text and end in text:
-        pre = text.split(begin, 1)[0].rstrip()
-        post = text.split(end, 1)[1].lstrip("\n")
-        nxt = pre + "\n\n" + block + ("\n" + post if post else "")
-    elif "GIGAWATT-AUDIO" in text:
-        # Older single-marker append from V2.1.2 — replace from that comment on.
-        idx = text.find("# GIGAWATT-AUDIO")
-        nxt = text[:idx].rstrip() + "\n\n" + block
-    else:
-        nxt = text.rstrip() + "\n\n" + block
-    if nxt == text:
-        return True
-    try:
-        tmp = path + ".gigawatt.tmp"
-        with open(tmp, "w") as fh:
-            fh.write(nxt)
-            if not nxt.endswith("\n"):
-                fh.write("\n")
-        os.replace(tmp, path)
-        return True
-    except OSError:
-        return False
-
-
-def prepare_toslink_for_airplay():
-    """Hold the 96 kHz SPDIF sink up and unsuspend it for an AirPlay session."""
-    _relax_pulse_idle()
-    env = _pulse_env()
-    for args in (
-        ["pactl", "suspend-sink", "@DEFAULT_SINK@", "0"],
-        ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "0"],
-    ):
-        try:
-            subprocess.call(
-                args,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=3,
-                env=env,
-            )
-        except Exception:
-            pass
-
 
 ITEM_RE = re.compile(
     br"<item><type>([0-9a-fA-F]+)</type><code>([0-9a-fA-F]+)</code><length>(\d+)</length>"
@@ -182,10 +107,10 @@ def _pulse_sock_path():
         return raw[5:] or "/run/pulse/native"
     if raw.startswith("/"):
         return raw
-    for path in ("/run/pulse/native", "/var/run/pulse/native"):
+    for path in ("/var/run/pulse/native", "/run/pulse/native"):
         if os.path.exists(path):
             return path
-    return "/run/pulse/native"
+    return "/var/run/pulse/native"
 
 
 def pulse_ready(timeout=0.0):
@@ -203,6 +128,100 @@ def _pulse_env():
     env = os.environ.copy()
     env["PULSE_SERVER"] = env.get("PULSE_SERVER") or ("unix:" + _pulse_sock_path())
     return env
+
+
+AIRPLAY_RATES = (44100, 48000)
+LOCAL_RATE = 96000
+_SINK = "@DEFAULT_SINK@"
+
+
+def parse_sink_rate(text):
+    for line in (text or "").splitlines():
+        if "Sample Specification:" not in line:
+            continue
+        match = re.search(r"(\d+)\s*Hz", line, re.I)
+        if match:
+            return int(match.group(1))
+    return 0
+
+
+def _pactl(args, timeout=4):
+    try:
+        return subprocess.check_output(
+            ["pactl"] + args,
+            stderr=subprocess.DEVNULL,
+            universal_newlines=True,
+            timeout=timeout,
+            env=_pulse_env(),
+        )
+    except Exception:
+        return ""
+
+
+def current_spdif_rate():
+    return parse_sink_rate(_pactl(["list", "sinks"]))
+
+
+def _suspend_sink(on):
+    _pactl(["suspend-sink", _SINK, "1" if on else "0"])
+
+
+def _kick_silence(rate, msec=80):
+    """Short stream at `rate` so Pulse reopens imx-spdif at that rate."""
+    try:
+        rate = int(rate)
+    except (TypeError, ValueError):
+        return False
+    frames = max(1, int(rate * (msec / 1000.0)))
+    raw = b"\x00" * (frames * 4)
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            [
+                "paplay",
+                "--device=" + _SINK,
+                "--raw",
+                "--format=s16le",
+                "--rate=%d" % rate,
+                "--channels=2",
+                "--latency-msec=50",
+                "--client-name=TOSLINK-RATE",
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=_pulse_env(),
+        )
+        proc.stdin.write(raw)
+        proc.stdin.close()
+        proc.wait(timeout=3)
+        return True
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+        return False
+
+
+def set_spdif_rate(rate):
+    """Open TOSLINK at `rate` so AirPlay is not resampled 44.1 → 96 kHz."""
+    want = int(rate or 0)
+    if want < 8000:
+        return 0
+    got = current_spdif_rate()
+    if got == want:
+        return got
+    _suspend_sink(True)
+    time.sleep(0.18)
+    _suspend_sink(False)
+    time.sleep(0.12)
+    got = current_spdif_rate()
+    if got == want:
+        return got
+    _kick_silence(want)
+    time.sleep(0.12)
+    return current_spdif_rate()
 
 
 def _pulse_airplay_playing():
@@ -260,9 +279,10 @@ def _relax_pulse_idle():
 
 
 class AirPlay(object):
-    def __init__(self, directory, on_begin=None, name=None):
+    def __init__(self, directory, on_begin=None, on_end=None, name=None):
         self.directory = directory
         self.on_begin = on_begin
+        self.on_end = on_end
         self.lock = threading.Lock()
         self.proc = None
         self.enabled = False
@@ -275,6 +295,7 @@ class AirPlay(object):
         self.name = sanitize_name(name) or default_name()
         self._meta_fh = None
         self._keeper = False
+        self._jack_matched = False
         try:
             self._write_conf()
         except Exception:
@@ -349,6 +370,7 @@ class AirPlay(object):
                 self._ensure_keeper_locked()
                 return ok
             self._stop_locked()
+            self._restore_toslink()
             self.error = ""
             return True
 
@@ -401,7 +423,7 @@ class AirPlay(object):
         if not pulse_ready(0):
             self.error = "waiting for PulseAudio"
             return False
-        prepare_toslink_for_airplay()
+        _relax_pulse_idle()
         try:
             self._ensure_fifo()
         except Exception as exc:
@@ -423,17 +445,22 @@ class AirPlay(object):
             return False
         self.error = ""
         self.active = False
+        self._jack_matched = False
         threading.Thread(target=self._meta_loop, daemon=True).start()
+        threading.Thread(target=self._pulse_watch, daemon=True).start()
         return True
 
     def _stop_locked(self):
         proc = self.proc
         self.proc = None
+        was = self.active
         self.active = False
         self.title = ""
         self.artist = ""
         self.album = ""
         self.client = ""
+        if was:
+            self._restore_toslink()
         if proc is None:
             return
         try:
@@ -444,6 +471,53 @@ class AirPlay(object):
                 proc.kill()
             except Exception:
                 pass
+
+    def _match_toslink(self):
+        """Run imx-spdif at AirPlay's rate (44.1 kHz, else 48 kHz)."""
+        if self._jack_matched:
+            return
+        for rate in AIRPLAY_RATES:
+            if set_spdif_rate(rate) == rate:
+                self._jack_matched = True
+                return
+        self._jack_matched = True
+
+    def _restore_toslink(self):
+        if not self._jack_matched and current_spdif_rate() == LOCAL_RATE:
+            return
+        set_spdif_rate(LOCAL_RATE)
+        self._jack_matched = False
+
+    def _pulse_watch(self):
+        while True:
+            with self.lock:
+                proc = self.proc
+                known_active = self.active
+            if proc is None or proc.poll() is not None:
+                return
+            flowing = _pulse_airplay_playing()
+            if flowing and not known_active:
+                begin = False
+                with self.lock:
+                    if not self.active:
+                        self.active = True
+                        begin = True
+                if begin:
+                    if self.on_begin:
+                        try:
+                            self.on_begin()
+                        except Exception:
+                            pass
+                    self._match_toslink()
+            elif not flowing and known_active:
+                end = False
+                with self.lock:
+                    if not self.title:
+                        self.active = False
+                        end = True
+                if end:
+                    self._restore_toslink()
+            time.sleep(1.0)
 
     def _meta_loop(self):
         buf = b""
@@ -480,10 +554,11 @@ class AirPlay(object):
 
     def _apply(self, key, text):
         begin = False
+        end = False
         with self.lock:
+            was = self.active
             if key == "ssnc.pbeg":
                 self.active = True
-                begin = True
             elif key == "ssnc.pend":
                 self.active = False
                 self.title = ""
@@ -504,8 +579,16 @@ class AirPlay(object):
             elif key in ("ssnc.snam", "ssnc.snua", "ssnc.clip"):
                 if text:
                     self.client = text
-        if begin and self.on_begin:
-            try:
-                self.on_begin()
-            except Exception:
-                pass
+            if self.active and not was:
+                begin = True
+            if was and not self.active:
+                end = True
+        if begin:
+            if self.on_begin:
+                try:
+                    self.on_begin()
+                except Exception:
+                    pass
+            self._match_toslink()
+        if end:
+            self._restore_toslink()

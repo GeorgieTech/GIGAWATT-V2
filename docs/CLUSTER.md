@@ -145,7 +145,26 @@ Version trail:
 | V2.2.0 | Cover Art Archive album art. Found cover on Playing/Library; visualizer if missing. |
 | V2.2.1 | Cover lookup no longer walks the whole library on every clock/status tick. Waveform keeps RAM to 4 caches. |
 | V2.2.2 | Playing waveform + Time Clock keep painting when cover art is shown. Status refresh is async; cover defers instead of marking missing during wave analyze. |
-| V2.2.3 | Host Time Clock isolated to library jack tracks. AirPlay 48 kHz→96 kHz TOSLINK via Pulse speex remap; word clock display shows optical 96 kHz. |
+| V2.2.3 | Cover defer actually requeues while the worker holds busy; CAA is tried once per album. Status refresh is single-flight under the app lock. |
+| V2.2.4 | Time Clock lock: keep SPDIF at 96 kHz (`alternate-sample-rate`), clamp paplay buffer spikes, lock at 16 ms jitter. |
+| V2.2.5 | Host hygiene: pactl not 1 Hz once clock is locked; Pulse logs notice; persistent sshd; fec IRQ off CPU0; mask failed journal-upload. |
+| V2.2.6 | Unlink dumps pair memory (`seen.json`, remote catalog, probe). Boot scrubs declined ghosts. Linking is unchanged. |
+| V2.2.7 | Settings can join house Wi-Fi (connman). Ethernet stays preferred. AirPlay bounces after join. |
+| V2.2.8 | AirPlay stuffing matches Gigawatt Beta2 (`interpolation=basic`, volume on). Dropped auto/soxr 0.5 s buffer. |
+| V2.2.9 | While AirPlay is playing, TOSLINK follows 44.1 kHz (else 48 kHz). Local jack restores 96 kHz after. |
+| V2.2.10 | Library Artists/Albums use the lead credit only. Featured names stay on the track, not as extra artists or split albums. |
+| V2.2.11 | Library track rows show file type and bitrate (OPUS · 160 kbps). |
+| V2.2.12 | Playing page: volume sits between pause and waveform; waveform sits lower. |
+| V2.2.13 | Time Clock lock: local jack stays at 96 kHz so Pulse does not switch SPDIF to 48 kHz. |
+| V2.2.14 | Time Clock accepts the real 96 kHz ALSA sink (~800 ms) and still drops 48 kHz balloons. |
+| V2.2.15 | Time Clock smooths Pulse sink sawtooth and locks at 24 ms jitter. |
+| V2.2.16 | Host Time Clock is library TOSLINK only. AirPlay does not lock or drive it. |
+| V2.2.17 | Karaoke: split queue + library search, Play next with requester name. |
+| V2.2.18 | Hide empty karaoke requester chip. |
+| V2.2.19 | Karaoke words wipe gold as Host Time Clock follows the line. |
+| V2.2.20 | Karaoke fill is clipped to letter shapes (no glow bleed). |
+| V2.2.21 | EQ: two fader rows plus a live 20 Hz–20 kHz response curve. |
+| V2.2.22 | EQ Karaoke preset: rumble cut, presence lift 2–4 kHz. |
 
 Hard rules that did **not** change: no Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.179` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID. AirPlay 1 is on this host; AirPlay 2 is not.
 

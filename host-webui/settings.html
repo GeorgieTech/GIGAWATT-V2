@@ -56,10 +56,30 @@
     </section>
     <section class="card">
       <div class="section-head">
+        <h2>Wi-Fi</h2>
+        <span class="badge" id="wifi-badge">Off</span>
+      </div>
+      <p class="hint">Join the house network so a phone on Wi-Fi can AirPlay to this TOSLINK. Ethernet stays the main address. Passphrase is stored only on this chassis.</p>
+      <p class="meta tight" id="wifi-meta"></p>
+      <div class="row">
+        <label class="field">Network
+          <select id="wifi-ssid"></select>
+        </label>
+      </div>
+      <div class="row">
+        <label class="field">Passphrase
+          <input id="wifi-pass" type="password" maxlength="63" autocomplete="off" spellcheck="false">
+        </label>
+        <button type="button" class="primary" id="wifi-join">Join</button>
+        <button type="button" class="ghost" id="wifi-scan">Scan</button>
+      </div>
+    </section>
+    <section class="card">
+      <div class="section-head">
         <h2>AirPlay</h2>
         <span class="badge" id="ap-badge">Off</span>
       </div>
-      <p class="hint">Each host advertises its own AirPlay 1 name. iPhone or Mac plays to this TOSLINK at 48 kHz; Pulse remaps onto the fixed 96 kHz optical word clock. Host Time Clock stays on library tracks only. Rename so two boxes never look the same in Control Center.</p>
+      <p class="hint">Each host advertises its own AirPlay 1 name. iPhone or Mac plays to this TOSLINK. Rename so two boxes never look the same in Control Center.</p>
       <div class="row">
         <button type="button" class="primary" id="ap-toggle">Turn on</button>
       </div>
@@ -276,7 +296,7 @@ async function linkHost(h) {
   }
 }
 async function unlinkHost(h) {
-  if (!confirm("Unlink " + (h.host || h.uid) + "? This jack will only show its own library. Copies pulled from that host are removed here. Files that live on that host are not deleted. It will not relink until you tap Link.")) return;
+  if (!confirm("Unlink " + (h.host || h.uid) + "? This jack will only show its own library. Pair memory of that host is dumped here. Copies pulled from that host are removed. Files that live on that host are not deleted. It will not relink until you tap Link.")) return;
   busy = true;
   try {
     const data = await api({
@@ -361,10 +381,74 @@ $("ap-save").onclick = async () => {
   }
   loadPlayback();
 };
+async function paintWifi(data) {
+  const d = data || {};
+  const nets = d.networks || [];
+  const sel = $("wifi-ssid");
+  const current = sel.value;
+  sel.innerHTML = "";
+  const pick = document.createElement("option");
+  pick.value = "";
+  pick.textContent = nets.length ? "Choose a network" : "Scan for networks";
+  sel.appendChild(pick);
+  nets.forEach((n) => {
+    const opt = document.createElement("option");
+    opt.value = n.name || "";
+    opt.textContent = (n.name || n.id) + (n.connected ? " · joined" : "");
+    sel.appendChild(opt);
+  });
+  if (d.ssid) sel.value = d.ssid;
+  else if (current) sel.value = current;
+  $("wifi-badge").textContent = d.connected ? (d.ssid || "On") : (d.powered ? "Radio on" : "Off");
+  $("wifi-badge").className = "badge " + (d.connected ? "live" : (d.powered ? "seen" : ""));
+  const bits = [];
+  if (d.eth_ip) bits.push("Ethernet " + d.eth_ip);
+  if (d.wlan_ip) bits.push("Wi-Fi " + d.wlan_ip);
+  else if (d.powered) bits.push("wlan0 up, not joined");
+  if (d.error) bits.push(d.error);
+  $("wifi-meta").textContent = bits.join(" · ");
+}
+async function loadWifi(scan) {
+  try {
+    const data = await (await fetch("/api/wifi" + (scan ? "?scan=1" : ""))).json();
+    paintWifi(data);
+  } catch (e) {}
+}
+$("wifi-scan").onclick = async () => {
+  $("ok").textContent = "Scanning Wi-Fi…";
+  await loadWifi(true);
+  $("ok").textContent = "";
+};
+$("wifi-join").onclick = async () => {
+  const ssid = $("wifi-ssid").value;
+  const passphrase = $("wifi-pass").value;
+  if (!ssid) {
+    $("err").textContent = "Pick a network";
+    return;
+  }
+  $("ok").textContent = "Joining " + ssid + "…";
+  $("err").textContent = "";
+  try {
+    const res = await fetch("/api/wifi", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ssid: ssid, passphrase: passphrase }),
+    });
+    const data = await res.json();
+    paintWifi(data);
+    $("ok").textContent = data.ok ? ("Joined " + (data.ssid || ssid) + (data.wlan_ip ? (" · " + data.wlan_ip) : "")) : "";
+    $("err").textContent = data.ok ? "" : (data.error || "could not join");
+    if (data.ok) $("wifi-pass").value = "";
+  } catch (e) {
+    $("err").textContent = "Host is not answering";
+  }
+};
 loadFleet(true);
 loadPlayback();
+loadWifi(true);
 setInterval(() => loadFleet(true), 4000);
 setInterval(loadPlayback, 4000);
+setInterval(() => loadWifi(false), 8000);
 </script>
 </body>
 </html>

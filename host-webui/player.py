@@ -14,20 +14,19 @@ PULSE_SINK = os.environ.get("PULSE_SINK", "@DEFAULT_SINK@")
 FFMPEG_LOG = os.environ.get("FFMPEG_LOG", "/tmp/crypt-ffmpeg.log")
 PROGRESS_FILE = os.environ.get("PROGRESS_FILE", "/tmp/crypt-ff.progress")
 CLOCK_FILE = os.environ.get("CLOCK_FILE", "/data/crypt/clock.json")
-# DualLite is happier at 48 kHz; Pulse resamples onto the 96 kHz S/PDIF sink.
-RATE = os.environ.get("CRYPT_RATE", "48000")
-# Savant imx-spdif TOSLINK word clock is fixed at 96 kHz (see docs/HOST.md).
-WORD_RATE = os.environ.get("CRYPT_WORD_RATE", "96000")
+# Keep paplay at 96 kHz so Pulse does not switch imx-spdif to 48 kHz.
+# At 48 kHz the ALSA buffer doubles (~800 ms) and the Time Clock never locks.
+RATE = os.environ.get("CRYPT_RATE", "96000")
 # paplay WAV-on-stdin prebuffers seconds; raw PCM + this latency is the pause window.
 try:
     LATENCY_MS = str(max(40, min(250, int(os.environ.get("CRYPT_LATENCY_MS", "90")))))
 except ValueError:
     LATENCY_MS = "90"
-# imx-spdif ALSA buffer is ~200 ms; paplay's 90 ms request is only the stream target.
+# imx-spdif ALSA buffer is 76800 frames ≈ 800 ms at 96 kHz; paplay 90 ms is the stream target.
 try:
-    CLOCK_PAD_MS = max(0, min(400, int(os.environ.get("CRYPT_CLOCK_PAD_MS", "270"))))
+    CLOCK_PAD_MS = max(0, min(800, int(os.environ.get("CRYPT_CLOCK_PAD_MS", "790"))))
 except ValueError:
-    CLOCK_PAD_MS = 270
+    CLOCK_PAD_MS = 790
 # AFC-style PLL: fast capture, then hold. Pulse latency is a noisy 10 MHz analog.
 try:
     PLL_CAPTURE = max(0.05, min(0.5, float(os.environ.get("CRYPT_PLL_CAPTURE", "0.28"))))
@@ -145,6 +144,12 @@ EQ_PRESETS = (
         "blurb": "NAD / Bluesound house target: punch around 30–60 Hz, less deep rumble than a full bass shelf, warmer and steeper highs than Harman. 31-band 1/3-octave fit, 1 kHz at 0 dB.",
         "gains": [3.0, 4.5, 5.5, 5.5, 5.0, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 1.0, 0.5, 0.5, 0.0, 0.0, 0.0, -0.5, -1.0, -1.0, -2.0, -2.5, -3.0, -3.5, -4.5, -5.0, -6.0, -6.5, -7.5, -8.0],
     },
+    {
+        "id": "karaoke",
+        "name": "Karaoke",
+        "blurb": "Vocals sit on TOSLINK: cut rumble below ~80 Hz, scoop boxy 250–400 Hz, lift presence 2–4 kHz so lyrics cut through, then a little air. 1 kHz at 0 dB.",
+        "gains": [-6.0, -5.5, -4.5, -3.5, -2.5, -1.5, -0.5, 0.0, 0.5, 0.5, 0.0, -0.5, -1.0, -1.0, -0.5, 0.0, 0.0, 0.0, 0.5, 1.5, 2.5, 3.5, 3.5, 3.0, 2.0, 1.5, 1.5, 1.0, 0.5, -0.5, -1.0],
+    },
 )
 
 
@@ -180,26 +185,34 @@ def _paplay_ms():
         return 90
 
 
-def _stream_rate():
-    """paplay / ffmpeg PCM rate for library tracks (usually 48 kHz)."""
+def _word_rate():
     try:
         rate = int(RATE)
-    except (TypeError, ValueError):
-        return 48000
-    return rate if rate > 0 else 48000
-
-
-def _word_rate():
-    """Optical TOSLINK word clock on this chassis (Savant SPDIF = 96 kHz)."""
-    try:
-        rate = int(WORD_RATE)
     except (TypeError, ValueError):
         return 96000
     return rate if rate > 0 else 96000
 
 
+def toslink_clock(clock, airplay_active=False, output="jack", source="jack"):
+    """Host Time Clock is library TOSLINK only. AirPlay and this-browser are off."""
+    out = dict(clock or {})
+    jack = (
+        (not airplay_active)
+        and (output or "jack") == "jack"
+        and (source or "jack") == "jack"
+    )
+    if jack:
+        return out
+    out["locked"] = False
+    out["phase"] = "idle"
+    out["warming"] = False
+    out["ppm"] = 0.0
+    out["jitter_ms"] = 0.0
+    return out
+
+
 def _samples(sec, rate=None):
-    rate = int(rate or _stream_rate())
+    rate = int(rate or _word_rate())
     return int(round(max(0.0, float(sec or 0.0)) * rate))
 
 
@@ -224,7 +237,7 @@ def discipline_latency(state, sample, capture=PLL_CAPTURE, hold=PLL_HOLD):
     buf = float(sample.get("buffer_ms") or 0.0)
     sink = float(sample.get("sink_ms") or 0.0)
     total = float(sample.get("latency_ms") or (buf + sink))
-    if total < 20 or total > 1200:
+    if total < 20 or total > 1100:
         state["accepted"] = False
         return state
     err = total - state["lat_ms"]
@@ -241,9 +254,10 @@ def discipline_latency(state, sample, capture=PLL_CAPTURE, hold=PLL_HOLD):
     state["sink_ms"] = sink
     state["n"] = int(state.get("n") or 0) + 1
     state["jitter_ms"] = jitter * 0.78 + abs(err) * 0.22
-    if (not locked) and state["n"] >= 6 and state["jitter_ms"] < 8.0:
+    # Pulse sink occupancy sawtooths ~80 ms on this 800 ms ALSA buffer.
+    if (not locked) and state["n"] >= 8 and state["jitter_ms"] < 24.0:
         state["locked"] = True
-    elif locked and state["jitter_ms"] > 22.0:
+    elif locked and state["jitter_ms"] > 48.0:
         state["locked"] = False
         state["n"] = 3
     state["accepted"] = True
@@ -366,6 +380,28 @@ def _usec_field(line, prefix):
     return None
 
 
+def _normalize_latency(buf_ms, sink_ms, paplay_ms=None):
+    """Keep paplay's requested buffer. Drop 48 kHz SPDIF balloons (sink
+    ~800–1400 ms) so the PLL only tracks 96 kHz TOSLINK."""
+    try:
+        want = float(paplay_ms if paplay_ms is not None else _paplay_ms())
+    except (TypeError, ValueError):
+        want = 90.0
+    buf_ms = max(0.0, float(buf_ms or 0.0))
+    sink_ms = max(0.0, float(sink_ms or 0.0))
+    if buf_ms < 40 or sink_ms < 10:
+        return None
+    if buf_ms > want * 2.5:
+        buf_ms = want
+    # 76800-frame ALSA buffer is ~800 ms at 96 kHz, ~1600 ms at 48 kHz.
+    if sink_ms > 1000:
+        return None
+    total = buf_ms + sink_ms
+    if total < 60 or total > 1100:
+        return None
+    return {"buffer_ms": buf_ms, "sink_ms": sink_ms, "latency_ms": total}
+
+
 def _read_crypt_latency():
     """Pulse stream latency for the CRYPT paplay client, in milliseconds."""
     text = _cmd(["pactl", "list", "sink-inputs"])
@@ -399,13 +435,7 @@ def _read_crypt_latency():
         found = (buf_usec, sink_usec or 0)
     if not found:
         return None
-    buf_ms = max(0, found[0] / 1000.0)
-    sink_ms = max(0, found[1] / 1000.0)
-    total = buf_ms + sink_ms
-    # paplay still priming or tearing down reports 0 buffer; ignore those.
-    if buf_ms < 40 or sink_ms < 10 or total < 60 or total > 1200:
-        return None
-    return {"buffer_ms": buf_ms, "sink_ms": sink_ms, "latency_ms": total}
+    return _normalize_latency(found[0] / 1000.0, found[1] / 1000.0)
 
 
 def _load_clock_file():
@@ -415,7 +445,7 @@ def _load_clock_file():
         lat = float(data.get("latency_ms") or 0)
         buf = float(data.get("buffer_ms") or 0)
         sink = float(data.get("sink_ms") or 0)
-        if lat < 60 or lat > 1200 or buf < 40:
+        if lat < 60 or lat > 1100 or buf < 40 or sink > 1000:
             return None
         return {
             "latency_ms": lat,
@@ -782,10 +812,11 @@ class HostPlayer(object):
             jitter = 0.0
         self._pll = new_pll_state(lat, buf, sink)
         self._pll["jitter_ms"] = float(jitter or 0.0)
-        self._pll["locked"] = bool(saved)
+        self._pll["locked"] = bool(saved) and float(jitter or 0.0) < 24.0
         self._lat_ms = self._pll["lat_ms"]
         self._buf_ms = self._pll["buf_ms"]
         self._sink_ms = self._pll["sink_ms"]
+        self._sink_filt = float(sink or 0.0) or None
         self._clock_on = False
         self._clock_saved = 0.0
         self._play_corr = 0.0
@@ -817,17 +848,18 @@ class HostPlayer(object):
             playback = min(playback, self.duration)
         heard = max(0.0, heard)
         offset_ms = max(0.0, (playback - heard) * 1000.0)
-        stream = _stream_rate()
-        word = _word_rate()
+        rate = _word_rate()
         jitter = float(self._pll.get("jitter_ms") or 0.0)
         locked = bool(
-            self._clock_on
+            (not self._soft)
+            and self._clock_on
             and self._pll.get("locked")
             and self._alive_locked()
             and not self.paused
         )
-        if not self.media:
+        if self._soft or not self.media:
             phase = "idle"
+            locked = False
         elif self.paused or not self._alive_locked():
             phase = "frozen"
         elif not self._clock_on:
@@ -839,8 +871,8 @@ class HostPlayer(object):
         return {
             "heard": round(heard, 6),
             "playback": round(playback, 6),
-            "heard_samples": _samples(heard, stream),
-            "playback_samples": _samples(playback, stream),
+            "heard_samples": _samples(heard, rate),
+            "playback_samples": _samples(playback, rate),
             "offset_ms": int(round(offset_ms)),
             "latency_ms": round(self._pll["lat_ms"], 2),
             "buffer_ms": round(self._pll["buf_ms"], 2),
@@ -851,14 +883,23 @@ class HostPlayer(object):
             "ppm": round(self._ppm, 3),
             "locked": locked,
             "phase": phase,
-            # Optical word clock (96 kHz on Savant SPDIF). Not the AirPlay rate.
-            "rate": word,
-            "stream_rate": stream,
-            "scope": "library",
+            "rate": rate,
             "warming": bool(time.monotonic() < float(self._sync_warm_until or 0.0)),
         }
 
     def _apply_latency_sample(self, sample):
+        sink = float(sample.get("sink_ms") or 0.0)
+        buf = float(sample.get("buffer_ms") or 0.0)
+        prev = self._sink_filt
+        if prev is None or prev <= 0:
+            self._sink_filt = sink
+        else:
+            self._sink_filt = prev * 0.85 + sink * 0.15
+        sample = {
+            "buffer_ms": buf,
+            "sink_ms": self._sink_filt,
+            "latency_ms": buf + self._sink_filt,
+        }
         discipline_latency(self._pll, sample)
         self._lat_ms = self._pll["lat_ms"]
         self._buf_ms = self._pll["buf_ms"]
@@ -994,6 +1035,7 @@ class HostPlayer(object):
         self._play_corr = 0.0
         self._ppm = 0.0
         self._clock_on = False
+        self._sink_filt = None
         lat_s = max(0.15, (self._pll["lat_ms"] or 400.0) / 1000.0)
         self._sync_warm_until = self.t0 + lat_s + 0.12
         self.error = ""
@@ -1026,7 +1068,9 @@ class HostPlayer(object):
             playing = False
             locked = False
             with self.lock:
-                playing = bool(self._alive_locked() and not self.paused)
+                playing = bool(
+                    self._alive_locked() and not self.paused and not self._soft
+                )
                 locked = bool(self._pll.get("locked") and self._clock_on)
             if not playing:
                 time.sleep(0.4)
@@ -1039,4 +1083,6 @@ class HostPlayer(object):
                 with self.lock:
                     if self._alive_locked() and not self.paused:
                         self._apply_latency_sample(sample)
-            time.sleep(0.22 if not locked else 1.0)
+            # Locked: do not fork pactl at 1 Hz — that floods Pulse ("Connection died")
+            # and syslog on this 4-core box. Capture still samples often.
+            time.sleep(0.22 if not locked else 3.0)

@@ -60,7 +60,7 @@ class FfmpegFilterTests(unittest.TestCase):
 class PresetTests(unittest.TestCase):
     def test_all_presets_are_31_bands(self):
         ids = [p["id"] for p in player.EQ_PRESETS]
-        self.assertEqual(ids, ["flat", "harman", "bk1974", "hifi", "nad"])
+        self.assertEqual(ids, ["flat", "harman", "bk1974", "hifi", "nad", "karaoke"])
         for preset in player.EQ_PRESETS:
             self.assertEqual(len(preset["gains"]), 31, preset["id"])
             self.assertEqual(player.clamp_eq(preset["gains"]), list(map(float, preset["gains"])))
@@ -76,6 +76,13 @@ class PresetTests(unittest.TestCase):
         nad = [p for p in player.EQ_PRESETS if p["id"] == "nad"][0]["gains"]
         self.assertLess(nad[0], nad[player.EQ_FREQS.index(31.5)])
         self.assertLess(nad[player.EQ_FREQS.index(20)], nad[player.EQ_FREQS.index(50)])
+
+    def test_karaoke_lifts_presence_and_cuts_rumble(self):
+        kara = [p for p in player.EQ_PRESETS if p["id"] == "karaoke"][0]["gains"]
+        self.assertLess(kara[player.EQ_FREQS.index(20)], -4.0)
+        self.assertLess(kara[player.EQ_FREQS.index(315)], 0.0)
+        self.assertGreater(kara[player.EQ_FREQS.index(3150)], 2.5)
+        self.assertEqual(kara[player.EQ_FREQS.index(1000)], 0.0)
 
 
 if __name__ == "__main__":

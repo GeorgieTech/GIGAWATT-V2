@@ -6,7 +6,7 @@ Wants=sound.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/pulseaudio --daemonize=no --system --log-target=journal --disallow-exit --exit-idle-time=-1 --log-level=info -n --file=/data/www/gigawatt-pulse.pa
+ExecStart=/usr/bin/pulseaudio --daemonize=no --system --log-target=journal --disallow-exit --exit-idle-time=-1 --log-level=notice -n --file=/data/www/gigawatt-pulse.pa
 Restart=on-failure
 RestartSec=3
 TimeoutStartSec=30

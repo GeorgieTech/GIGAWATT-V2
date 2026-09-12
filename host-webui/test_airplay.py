@@ -10,35 +10,24 @@ import airplay
 import playback
 
 
+class RateParseTests(unittest.TestCase):
+    def test_reads_96k_and_44k(self):
+        self.assertEqual(airplay.parse_sink_rate(
+            "Sample Specification: s24-32le 2ch 96000Hz\n"
+        ), 96000)
+        self.assertEqual(airplay.parse_sink_rate(
+            "Sample Specification: s16le 2ch 44100Hz\n"
+        ), 44100)
+        self.assertEqual(airplay.parse_sink_rate(""), 0)
+
+
 class ConfTests(unittest.TestCase):
-    def test_stuffing_is_auto_not_basic(self):
-        conf = airplay.CONF_TEMPLATE % ("Gigawatt E409", "/tmp/gigawatt-airplay.meta")
-        self.assertIn('interpolation = "auto"', conf)
-        self.assertNotIn('interpolation = "basic"', conf)
-        self.assertIn("audio_backend_buffer_desired_length_in_seconds = 0.50", conf)
-        self.assertIn("resync_threshold_in_seconds = 0.150", conf)
-        self.assertIn('ignore_volume_control = "yes"', conf)
-
-    def test_pulse_daemon_snip_keeps_96k_word_clock(self):
-        snip = airplay.PULSE_DAEMON_SNIPPET
-        self.assertIn("default-sample-rate = 96000", snip)
-        self.assertIn("alternate-sample-rate = 48000", snip)
-        self.assertIn("speex-float-1", snip)
-
-    def test_ensure_pulse_daemon_conf_rewrites_old_block(self):
-        folder = tempfile.mkdtemp(prefix="crypt-pa-")
-        try:
-            path = os.path.join(folder, "daemon.conf")
-            with open(path, "w") as fh:
-                fh.write("# pulse\n\n# GIGAWATT-AUDIO\nresample-method = speex-float-1\n")
-            self.assertTrue(airplay.ensure_pulse_daemon_conf(path))
-            with open(path) as fh:
-                text = fh.read()
-            self.assertIn("GIGAWATT-AUDIO-BEGIN", text)
-            self.assertIn("default-sample-rate = 96000", text)
-            self.assertEqual(text.count("GIGAWATT-AUDIO-BEGIN"), 1)
-        finally:
-            shutil.rmtree(folder, ignore_errors=True)
+    def test_stuffing_matches_beta2(self):
+        conf = airplay.CONF_TEMPLATE % ("Gigawatt 39DB", "/tmp/gigawatt-airplay.meta")
+        self.assertIn('interpolation = "basic"', conf)
+        self.assertNotIn('interpolation = "auto"', conf)
+        self.assertNotIn("audio_backend_buffer_desired_length_in_seconds", conf)
+        self.assertIn('ignore_volume_control = "no"', conf)
 
 
 class NameTests(unittest.TestCase):

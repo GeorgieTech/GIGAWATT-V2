@@ -40,18 +40,29 @@ GENRES = (
 DISC_RE = re.compile(r"^(disc|disk|cd)\s*\d+$", re.I)
 TRACK_PREFIX_RE = re.compile(r"^(\d{1,3})\s*[-.)]\s*")
 PAIR_RE = re.compile(r"\s+-\s+")
+FEAT_RE = re.compile(r"\s+(?:feat\.?|ft\.?|featuring)\s+", re.I)
+COLLAB_X_RE = re.compile(r"\s+[xX]\s+")
 
 _PROBE_CMD = [
     "ffprobe",
     "-v",
     "error",
     "-show_entries",
-    "format_tags=title,artist,album,album_artist,albumartist,track,genre",
+    "format=bit_rate,duration,format_name:format_tags=title,artist,album,album_artist,albumartist,track,genre",
     "-show_entries",
-    "stream_tags=title,artist,album,track",
+    "stream=codec_name,codec_type,bit_rate:stream_tags=title,artist,album,track",
     "-of",
     "json",
 ]
+KIND_BY_EXT = {
+    "mp3": "MP3",
+    "flac": "FLAC",
+    "opus": "OPUS",
+    "ogg": "OGG",
+    "wav": "WAV",
+    "m4a": "M4A",
+    "aac": "AAC",
+}
 
 
 def _pretty_title(name):
@@ -124,8 +135,60 @@ def _probe_key(rel, size, mtime):
     return "%s|%s|%s" % (rel or "", int(size or 0), int(mtime or 0))
 
 
+def main_artist(artist, albumartist=""):
+    """Lead credit only. Featured names stay on the track, not in Artist/Album browse."""
+    tagged = (albumartist or "").strip()
+    if tagged and tagged != UNKNOWN_ARTIST:
+        return _first_artist(tagged)
+    return _first_artist(artist)
+
+
+def _first_artist(s):
+    s = (s or "").strip()
+    if not s or s == UNKNOWN_ARTIST:
+        return UNKNOWN_ARTIST
+    s = FEAT_RE.split(s, 1)[0]
+    s = COLLAB_X_RE.split(s, 1)[0]
+    s = s.split(";")[0]
+    s = s.split(",")[0].strip()
+    return s or UNKNOWN_ARTIST
+
+
+def _as_int(value):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def file_kind(rel, probed=None):
+    ext = os.path.splitext(rel or "")[1].lower().lstrip(".")
+    if ext in KIND_BY_EXT:
+        return KIND_BY_EXT[ext]
+    codec = str((probed or {}).get("codec") or "").lower()
+    if codec in KIND_BY_EXT:
+        return KIND_BY_EXT[codec]
+    if codec:
+        return codec.upper()
+    return ext.upper() or "AUDIO"
+
+
+def _bitrate_kbps(fmt, stream, size=0):
+    bps = _as_int((fmt or {}).get("bit_rate")) or _as_int((stream or {}).get("bit_rate"))
+    if not bps:
+        dur = float((fmt or {}).get("duration") or 0)
+        if dur > 0.5 and size:
+            bps = int((float(size) * 8.0) / dur)
+    if bps <= 0:
+        return 0
+    return int(round(bps / 1000.0))
+
+
 def probe_file(full):
-    info = {"title": "", "artist": "", "album": "", "track": 0, "genre": ""}
+    info = {
+        "title": "", "artist": "", "album": "", "albumartist": "",
+        "track": 0, "genre": "", "codec": "", "bitrate": 0,
+    }
     try:
         raw = subprocess.check_output(_PROBE_CMD + [full], stderr=subprocess.DEVNULL, timeout=4)
         data = json.loads(raw.decode("utf-8") or "{}")
@@ -135,14 +198,26 @@ def probe_file(full):
     fmt = data.get("format") or {}
     if isinstance(fmt.get("tags"), dict):
         tags.append(fmt.get("tags"))
-    for stream in data.get("streams") or []:
-        if isinstance(stream.get("tags"), dict):
-            tags.append(stream.get("tags"))
+    stream = {}
+    for item in data.get("streams") or []:
+        if not isinstance(item, dict):
+            continue
+        if isinstance(item.get("tags"), dict):
+            tags.append(item.get("tags"))
+        if item.get("codec_type") == "audio" or not stream:
+            stream = item
     info["title"] = _tag_get(tags, "title")
-    info["artist"] = _tag_get(tags, "artist", "album_artist", "albumartist")
+    info["artist"] = _tag_get(tags, "artist") or _tag_get(tags, "album_artist", "albumartist")
+    info["albumartist"] = _tag_get(tags, "album_artist", "albumartist")
     info["album"] = _tag_get(tags, "album")
     info["genre"] = _tag_get(tags, "genre")
     info["track"] = _track_no(_tag_get(tags, "track"), os.path.basename(full))
+    info["codec"] = str(stream.get("codec_name") or "").strip()
+    try:
+        size = os.path.getsize(full)
+    except OSError:
+        size = 0
+    info["bitrate"] = _bitrate_kbps(fmt, stream, size)
     return info
 
 
@@ -152,6 +227,7 @@ def identity_from_path(rel, probed=None, override=None):
     path_artist, path_album, path_title = _path_meta(rel)
     fn_artist, fn_title = _parse_filename_pair(path_title)
     artist = (override.get("artist") or probed.get("artist") or path_artist or fn_artist or "").strip()
+    albumartist = (override.get("albumartist") or probed.get("albumartist") or "").strip()
     album = (override.get("album") or probed.get("album") or path_album or "").strip()
     title = (override.get("title") or probed.get("title") or "").strip()
     if not title:
@@ -160,9 +236,12 @@ def identity_from_path(rel, probed=None, override=None):
         title = _pretty_title(rel)
     track = int(probed.get("track") or 0) or _track_no("", rel)
     genre = (override.get("genre") if "genre" in override else probed.get("genre") or "").strip()
+    lead = main_artist(artist or UNKNOWN_ARTIST, albumartist)
     return {
         "title": title,
         "artist": artist or UNKNOWN_ARTIST,
+        "albumartist": albumartist,
+        "main_artist": lead,
         "album": album or UNKNOWN_ALBUM,
         "track": track,
         "genre": genre,
@@ -242,18 +321,22 @@ class Library(object):
                     "mtime": item["mtime"],
                     "title": ident["title"],
                     "artist": ident["artist"],
+                    "albumartist": ident.get("albumartist") or "",
+                    "main_artist": ident.get("main_artist") or ident["artist"],
                     "album": ident["album"],
                     "track": ident["track"],
                     "genre": ident["genre"],
+                    "kind": file_kind(item["name"], probed),
+                    "bitrate": int((probed or {}).get("bitrate") or 0),
                     "tagged": bool(probed),
                     "edited": ident.get("edited") or False,
                 }
                 out.append(rec)
-                if probed is None:
+                if probed is None or "bitrate" not in (probed or {}):
                     missing += 1
         out.sort(
             key=lambda t: (
-                t["artist"].lower(),
+                (t.get("main_artist") or t["artist"]).lower(),
                 t["album"].lower(),
                 t["track"] or 9999,
                 t["title"].lower(),
@@ -275,7 +358,8 @@ class Library(object):
                 with self.lock:
                     for item in files:
                         key = _probe_key(item["name"], item["size"], item["mtime"])
-                        if key not in self.cache:
+                        hit = self.cache.get(key)
+                        if hit is None or "bitrate" not in hit:
                             todo.append((key, item["full"]))
                 if not todo:
                     self.scanning = False
