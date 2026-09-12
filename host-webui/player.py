@@ -22,11 +22,11 @@ try:
     LATENCY_MS = str(max(40, min(250, int(os.environ.get("CRYPT_LATENCY_MS", "90")))))
 except ValueError:
     LATENCY_MS = "90"
-# imx-spdif ALSA is 38400 frames ≈ 400 ms at 96 kHz; paplay 90 ms is the stream target.
+# imx-spdif ALSA buffer is 76800 frames ≈ 800 ms at 96 kHz; paplay 90 ms is the stream target.
 try:
-    CLOCK_PAD_MS = max(0, min(400, int(os.environ.get("CRYPT_CLOCK_PAD_MS", "370"))))
+    CLOCK_PAD_MS = max(0, min(800, int(os.environ.get("CRYPT_CLOCK_PAD_MS", "790"))))
 except ValueError:
-    CLOCK_PAD_MS = 370
+    CLOCK_PAD_MS = 790
 # AFC-style PLL: fast capture, then hold. Pulse latency is a noisy 10 MHz analog.
 try:
     PLL_CAPTURE = max(0.05, min(0.5, float(os.environ.get("CRYPT_PLL_CAPTURE", "0.28"))))
@@ -213,7 +213,7 @@ def discipline_latency(state, sample, capture=PLL_CAPTURE, hold=PLL_HOLD):
     buf = float(sample.get("buffer_ms") or 0.0)
     sink = float(sample.get("sink_ms") or 0.0)
     total = float(sample.get("latency_ms") or (buf + sink))
-    if total < 20 or total > 900:
+    if total < 20 or total > 1100:
         state["accepted"] = False
         return state
     err = total - state["lat_ms"]
@@ -369,11 +369,11 @@ def _normalize_latency(buf_ms, sink_ms, paplay_ms=None):
         return None
     if buf_ms > want * 2.5:
         buf_ms = want
-    # 38400-frame ALSA buffer is ~400 ms at 96 kHz, ~800 ms at 48 kHz.
-    if sink_ms > 700:
+    # 76800-frame ALSA buffer is ~800 ms at 96 kHz, ~1600 ms at 48 kHz.
+    if sink_ms > 1000:
         return None
     total = buf_ms + sink_ms
-    if total < 60 or total > 900:
+    if total < 60 or total > 1100:
         return None
     return {"buffer_ms": buf_ms, "sink_ms": sink_ms, "latency_ms": total}
 
@@ -421,7 +421,7 @@ def _load_clock_file():
         lat = float(data.get("latency_ms") or 0)
         buf = float(data.get("buffer_ms") or 0)
         sink = float(data.get("sink_ms") or 0)
-        if lat < 60 or lat > 900 or buf < 40 or sink > 700:
+        if lat < 60 or lat > 1100 or buf < 40 or sink > 1000:
             return None
         return {
             "latency_ms": lat,

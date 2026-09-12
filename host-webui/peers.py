@@ -27,7 +27,7 @@ except ImportError:
 from player import MUSIC_DIR
 import crypt_wire
 
-VERSION = "2.2.13"
+VERSION = "2.2.14"
 PEERS_FILE = os.environ.get("CRYPT_PEERS", "/data/crypt/peers.json")
 SEEN_FILE = os.environ.get("CRYPT_SEEN", "/data/crypt/seen.json")
 HOT_FILE = os.environ.get("CRYPT_HOT", "/data/crypt/hot.json")

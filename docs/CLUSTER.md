@@ -156,6 +156,7 @@ Version trail:
 | V2.2.11 | Library track rows show file type and bitrate (OPUS · 160 kbps). |
 | V2.2.12 | Playing page: volume sits between pause and waveform; waveform sits lower. |
 | V2.2.13 | Time Clock lock: local jack stays at 96 kHz so Pulse does not switch SPDIF to 48 kHz. |
+| V2.2.14 | Time Clock accepts the real 96 kHz ALSA sink (~800 ms) and still drops 48 kHz balloons. |
 
 Hard rules that did **not** change: no Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.179` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID. AirPlay 1 is on this host; AirPlay 2 is not.
 

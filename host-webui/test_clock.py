@@ -45,15 +45,15 @@ class LatencyPllTests(unittest.TestCase):
         self.assertEqual(st["lat_ms"], 360.0)
 
     def test_clamps_huge_client_buffer(self):
-        row = player._normalize_latency(840.0, 400.0, 90)
+        row = player._normalize_latency(840.0, 788.0, 90)
         self.assertIsNotNone(row)
         self.assertEqual(row["buffer_ms"], 90.0)
-        self.assertAlmostEqual(row["sink_ms"], 400.0)
-        self.assertLess(row["latency_ms"], 900)
+        self.assertAlmostEqual(row["sink_ms"], 788.0)
+        self.assertLess(row["latency_ms"], 1100)
 
     def test_rejects_48k_sink_balloon(self):
         self.assertIsNone(player._normalize_latency(90.0, 1416.0, 90))
-        self.assertIsNone(player._normalize_latency(840.0, 800.0, 90))
+        self.assertIsNone(player._normalize_latency(840.0, 1416.0, 90))
 
     def test_word_rate_is_96k(self):
         self.assertEqual(player._word_rate(), 96000)
