@@ -153,7 +153,10 @@
   </nav>
 </div>
 <script>
+// Flip to true to show the Playing-page waveform UI again (engine keeps running either way).
+const WAVEFORM_VISIBLE = false;
 const $ = (id) => document.getElementById(id);
+if (!WAVEFORM_VISIBLE) document.body.classList.add("waveform-ui-hidden");
 let last = {};
 let viz = {
   seed: 1,
@@ -866,6 +869,7 @@ function drawViz(ts) {
 }
 
 function sizeCanvas(id, cssH) {
+  // Keep drawing while WAVEFORM_VISIBLE=false (display:none → clientWidth/Height are 0).
   const c = $(id);
   if (!c) return null;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
