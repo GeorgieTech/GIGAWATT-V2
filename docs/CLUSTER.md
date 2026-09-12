@@ -151,6 +151,7 @@ Version trail:
 | V2.2.6 | Unlink dumps pair memory (`seen.json`, remote catalog, probe). Boot scrubs declined ghosts. Linking is unchanged. |
 | V2.2.7 | Settings can join house Wi-Fi (connman). Ethernet stays preferred. AirPlay bounces after join. |
 | V2.2.8 | AirPlay stuffing matches Gigawatt Beta2 (`interpolation=basic`, volume on). Dropped auto/soxr 0.5 s buffer. |
+| V2.2.9 | While AirPlay is playing, TOSLINK follows 44.1 kHz (else 48 kHz). Local jack restores 96 kHz after. |
 
 Hard rules that did **not** change: no Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.179` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID. AirPlay 1 is on this host; AirPlay 2 is not.
 

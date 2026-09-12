@@ -10,6 +10,17 @@ import airplay
 import playback
 
 
+class RateParseTests(unittest.TestCase):
+    def test_reads_96k_and_44k(self):
+        self.assertEqual(airplay.parse_sink_rate(
+            "Sample Specification: s24-32le 2ch 96000Hz\n"
+        ), 96000)
+        self.assertEqual(airplay.parse_sink_rate(
+            "Sample Specification: s16le 2ch 44100Hz\n"
+        ), 44100)
+        self.assertEqual(airplay.parse_sink_rate(""), 0)
+
+
 class ConfTests(unittest.TestCase):
     def test_stuffing_matches_beta2(self):
         conf = airplay.CONF_TEMPLATE % ("Gigawatt 39DB", "/tmp/gigawatt-airplay.meta")

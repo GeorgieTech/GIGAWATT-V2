@@ -33,9 +33,9 @@ if [ -f /etc/pulse/daemon.conf ]; then
 
 # GIGAWATT-AUDIO
 resample-method = speex-float-1
-avoid-resampling = no
+avoid-resampling = yes
 default-sample-rate = 96000
-alternate-sample-rate = 96000
+alternate-sample-rate = 44100
 default-fragments = 8
 default-fragment-size-msec = 50
 high-priority = yes
