@@ -110,13 +110,14 @@ class DeferTests(unittest.TestCase):
     def test_wave_busy_rethrows_instead_of_missing(self):
         folder = tempfile.mkdtemp(prefix="crypt-cover-")
         music = tempfile.mkdtemp(prefix="crypt-music-")
+        hits = []
         try:
             track = os.path.join(music, "song.flac")
             with open(track, "wb") as fh:
                 fh.write(b"fLaC" + b"\x00" * 40)
             idx = cover.CoverIndex(
                 folder=folder,
-                http_json=lambda url: None,
+                http_json=lambda url: hits.append(url) or None,
                 http_bytes=lambda url: (b"", ""),
                 pause=0,
             )
@@ -132,9 +133,16 @@ class DeferTests(unittest.TestCase):
                 raw, kind, deferred = idx._local_bytes("song.flac")
                 self.assertEqual(raw, b"")
                 self.assertTrue(deferred)
+                # Worker path: rel is already in busy when _resolve runs.
+                idx.busy.add("song.flac")
                 idx._resolve("song.flac")
                 key = cover.album_key("", "", "song.flac")
                 self.assertFalse(idx.index.get(key, {}).get("missing"))
+                self.assertIn("song.flac", idx.queue)
+                first = len(hits)
+                idx.queue[:] = []
+                idx._resolve("song.flac")
+                self.assertEqual(len(hits), first)
                 self.assertIn("song.flac", idx.queue)
             finally:
                 with wave_mod.WAVES.lock:

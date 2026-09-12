@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.2.2</div>
+      <div class="sub">S2 · V2.2.3</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -665,7 +665,6 @@ function loadWave(name) {
     showWaveProgress(false);
     return;
   }
-  // Ready wave: do not re-fetch. In-flight or timer-owned analyze: do not stack.
   if (rw.name === name && rw.n) return;
   if (rw.name === name && (rw.fetching || rw.timer)) return;
   if (rw.name !== name) {
@@ -734,7 +733,6 @@ function loadCover(name) {
     wrap.classList.add("has-cover");
     img.hidden = false;
     if (img.getAttribute("src") !== data.url) img.src = data.url;
-    // Cover replaces the FFT canvas only. Waveform + Time Clock keep running.
     stopViz();
     startPlayhead();
     return;
@@ -1085,14 +1083,15 @@ function stopViz() {
   viz.raf = 0;
 }
 
-// Playhead / waveform / Time Clock Pro: independent of the FFT viz.
-// V2.2.0 cover art called stopViz() and froze these because they shared one RAF.
+// Separate RAF so cover art can stopViz() without freezing waveform / Time Clock.
 let playheadRaf = 0;
 let playheadLast = 0;
 function drawPlayhead(ts) {
+  if (document.hidden) {
+    playheadRaf = 0;
+    return;
+  }
   playheadRaf = requestAnimationFrame(drawPlayhead);
-  if (document.hidden) return;
-  // ~30 fps is enough for heard/playback marks; saves DualLite/phone GPU.
   if (ts && playheadLast && ts - playheadLast < 32) return;
   playheadLast = ts || 0;
   drawRekord();

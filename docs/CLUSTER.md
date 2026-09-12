@@ -145,6 +145,7 @@ Version trail:
 | V2.2.0 | Cover Art Archive album art. Found cover on Playing/Library; visualizer if missing. |
 | V2.2.1 | Cover lookup no longer walks the whole library on every clock/status tick. Waveform keeps RAM to 4 caches. |
 | V2.2.2 | Playing waveform + Time Clock keep painting when cover art is shown. Status refresh is async; cover defers instead of marking missing during wave analyze. |
+| V2.2.3 | Cover defer actually requeues while the worker holds busy; CAA is tried once per album. Status refresh is single-flight under the app lock. |
 
 Hard rules that did **not** change: no Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.179` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID. AirPlay 1 is on this host; AirPlay 2 is not.
 

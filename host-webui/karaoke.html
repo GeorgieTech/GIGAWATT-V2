@@ -260,7 +260,7 @@ setInterval(async () => {
     playClock.playing = !!p.playing;
     playClock.duration = p.duration || playClock.duration;
   } catch (e) {}
-  clockBusy = false;
+  finally { clockBusy = false; }
 }, 250);
 </script>
 </body>

@@ -28,7 +28,7 @@ COVER_DIR = os.environ.get("CRYPT_COVERS", "/data/crypt/covers")
 INDEX_FILE = os.path.join(COVER_DIR, "index.json")
 MB = os.environ.get("CRYPT_MUSICBRAINZ", "https://musicbrainz.org/ws/2")
 CAA = os.environ.get("CRYPT_CAA", "https://coverartarchive.org")
-CLIENT = "CRYPT/2.2.2 (https://github.com/GeorgieTech/GIGAWATT-V2)"
+CLIENT = "CRYPT/2.2.3 (https://github.com/GeorgieTech/GIGAWATT-V2)"
 MAX_BYTES = 400 * 1024
 MISSING_TTL = 7 * 24 * 3600
 SIDECARS = (
@@ -178,6 +178,7 @@ class CoverIndex(object):
         self.index = {}
         self.queue = []
         self.busy = set()
+        self._caa_tried = set()
         self._load()
         self._alive = True
         self._thread = threading.Thread(target=self._loop, name="cover-caa")
@@ -311,17 +312,19 @@ class CoverIndex(object):
             return
         raw, kind, deferred = self._local_bytes(rel)
         mbid = ""
-        if not raw:
+        if not raw and key not in self._caa_tried:
             raw, kind, mbid = self._caa_bytes(artist, album, title)
+            self._caa_tried.add(key)
         if raw and kind:
+            self._caa_tried.discard(key)
             self._store(key, raw, kind, mbid, found=True)
             return
-        # Waveform ffmpeg was using the CPU — do not stamp "missing" yet.
         if deferred:
             with self.lock:
-                if rel not in self.queue and rel not in self.busy:
+                if rel not in self.queue:
                     self.queue.append(rel)
             return
+        self._caa_tried.discard(key)
         self._store(key, b"", "", "", found=False)
 
     def _store(self, key, raw, kind, mbid, found):

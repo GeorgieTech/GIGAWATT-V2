@@ -362,7 +362,8 @@ class CryptApp(object):
         except Exception:
             traceback.print_exc()
         finally:
-            self._refresh_busy = False
+            with self.lock:
+                self._refresh_busy = False
 
     def catalog_snapshot(self):
         with self.lock:
@@ -392,10 +393,13 @@ class CryptApp(object):
 
     def status(self):
         now = time.time()
-        # Never block the 1 Hz Playing poll on a peer library merge.
-        if now - self._status_refresh >= 8.0 and not self._refresh_busy:
-            self._status_refresh = now
-            self._refresh_busy = True
+        launch = False
+        with self.lock:
+            if now - self._status_refresh >= 8.0 and not self._refresh_busy:
+                self._status_refresh = now
+                self._refresh_busy = True
+                launch = True
+        if launch:
             threading.Thread(target=self._safe_refresh, name="status-refresh", daemon=True).start()
         snap = self.player.snapshot()
         with self.lock:
