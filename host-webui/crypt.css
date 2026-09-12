@@ -1127,6 +1127,16 @@ body.follow-lock .queue li:not(.empty-state) {
   color: #030303;
 }
 .eq-page .page { max-width: 980px; }
+.settings-page .page { max-width: 980px; }
+#eq {
+  scroll-margin-top: 72px;
+  transition: border-color 0.35s ease, box-shadow 0.35s ease;
+}
+#eq.eq-focus,
+#eq:target {
+  border-color: rgba(224, 122, 58, 0.55);
+  box-shadow: 0 0 0 1px rgba(224, 122, 58, 0.28);
+}
 .eq-note {
   color: var(--muted);
   font-size: 13px;
@@ -1321,7 +1331,7 @@ body.follow-lock .queue li:not(.empty-state) {
   left: 0; right: 0; bottom: 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 1fr 0.72fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 0;
   padding: 6px 6px calc(8px + var(--safe-bot));
   background: #030303;

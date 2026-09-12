@@ -117,8 +117,6 @@ PAGES = {
     "/karaoke.html": ("karaoke.html", "text/html; charset=utf-8"),
     "/report": ("report.html", "text/html; charset=utf-8"),
     "/report.html": ("report.html", "text/html; charset=utf-8"),
-    "/eq": ("eq.html", "text/html; charset=utf-8"),
-    "/eq.html": ("eq.html", "text/html; charset=utf-8"),
     "/settings": ("settings.html", "text/html; charset=utf-8"),
     "/settings.html": ("settings.html", "text/html; charset=utf-8"),
     "/crypt.css": ("crypt.css", "text/css; charset=utf-8"),
@@ -126,6 +124,12 @@ PAGES = {
     "/favicon.svg": ("favicon.svg", "image/svg+xml"),
     "/icon.png": ("icon.png", "image/png"),
     "/apple-touch-icon.png": ("apple-touch-icon.png", "image/png"),
+}
+
+# Legacy EQ page bookmarks → Settings EQ section (fragment kept by browsers).
+REDIRECTS = {
+    "/eq": "/settings#eq",
+    "/eq.html": "/settings#eq",
 }
 
 
@@ -833,12 +837,30 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def _redirect(self, location, code=302):
+        body = ('<!DOCTYPE html><html><head><meta charset="utf-8">'
+                '<meta http-equiv="refresh" content="0;url=%s">'
+                '<script>location.replace(%s)</script></head>'
+                '<body><a href="%s">Continue</a></body></html>') % (
+            location, json.dumps(location), location)
+        raw = body.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Location", location)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(raw)
+
     def do_GET(self):
         raw_path = self.path.split("?", 1)[0]
         qs = self.path.split("?", 1)[1] if "?" in self.path else ""
         try:
             if raw_path.startswith("/api/"):
                 _note_peer(self)
+            if raw_path in REDIRECTS:
+                self._redirect(REDIRECTS[raw_path])
+                return
             if raw_path in PAGES:
                 name, ctype = PAGES[raw_path]
                 path = os.path.realpath(os.path.join(HERE, name))
@@ -952,6 +974,13 @@ class Handler(BaseHTTPRequestHandler):
         raw_path = self.path.split("?", 1)[0]
         qs = self.path.split("?", 1)[1] if "?" in self.path else ""
         try:
+            if raw_path in REDIRECTS:
+                self.send_response(302)
+                self.send_header("Location", REDIRECTS[raw_path])
+                self.send_header("Content-Length", "0")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return
             if raw_path == "/api/media":
                 full = _media_path(_qparam(qs, "name"))
                 if not full:
