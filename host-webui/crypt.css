@@ -1547,6 +1547,45 @@ body.job-busy .tabbar::before {
   border-color: rgba(134,197,111,0.4);
   color: #c9e0b0;
 }
+.ready-chip,
+.now-chip {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(134,197,111,0.4);
+  background: #0e0b0c;
+  color: #c9e0b0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  vertical-align: 1px;
+  text-transform: uppercase;
+}
+.ready-chip.lyrics {
+  border-color: rgba(134,197,111,0.55);
+}
+.ready-chip.wait {
+  border-color: rgba(196,92,38,0.4);
+  color: var(--ember-2);
+}
+.now-chip {
+  margin-left: 0;
+  margin-right: 8px;
+  border-color: rgba(196,92,38,0.55);
+  color: var(--ember-2);
+}
+.library-page .tracks li.on {
+  background: rgba(243,230,200,0.07);
+  box-shadow: inset 3px 0 0 var(--ember);
+  color: #fff3d6;
+}
+.library-page .tracks li.on .sub {
+  color: rgba(243,230,200,0.72);
+}
+.library-page .tracks li.on:hover {
+  background: rgba(243,230,200,0.1);
+}
 .unison-btn {
   letter-spacing: 0.12em;
   min-height: 44px;

@@ -528,13 +528,22 @@ function rowOverflow(items) {
 function rowTrack(t, opts) {
   const li = document.createElement("li");
   const remote = isRemote(t);
-  if (t.name === playingName()) li.className = "on";
+  const now = t.name === playingName();
+  if (now) li.className = "on";
   if (remote) li.classList.add("away");
+  if (now) li.setAttribute("aria-current", "true");
   const bits = [t.artist, t.album, t.kind, t.bitrate ? (t.bitrate + " kbps") : ""].filter(Boolean);
   const sub = bits.join(" · ");
   const chip = t.home_stamp ? ("<span class='home-chip " + (t.here ? "here" : "away") + "'>" + esc(t.home_stamp) + "</span>") : "";
+  const nowChip = now ? "<span class='now-chip'>Playing</span>" : "";
+  let readyChip = "";
+  if (t.ready || t.analyzed) {
+    readyChip = "<span class='ready-chip" + (t.lyrics ? " lyrics" : "") + "'>" + (t.lyrics ? "Ready · Lyrics" : "Ready") + "</span>";
+  } else if (t.analyzing) {
+    readyChip = "<span class='ready-chip wait'>Analyzing</span>";
+  }
   li.innerHTML = coverHTML(t.name || titleOf(t), titleOf(t), false, t.cover) +
-    "<div class='grow'><div class='name'>" + chip + esc(titleOf(t)) + "</div><div class='sub'>" + esc(sub) + "</div></div>";
+    "<div class='grow'><div class='name'>" + chip + nowChip + esc(titleOf(t)) + readyChip + "</div><div class='sub'>" + esc(sub) + "</div></div>";
   const extra = [];
   if (!(opts && opts.noAdd)) {
     extra.push({ label: "Add to playlist", run: (e) => openPicker(t.name, e) });
@@ -948,9 +957,12 @@ function applyLib(st, lib, force) {
     $("err").textContent = (st.player && st.player.error) || peer.error || "";
   }
   const tagged = (lib.tracks || []).reduce((acc, t) => acc + (t.tagged ? 1 : 0), 0);
+  const readyN = (lib.tracks || []).reduce((acc, t) => acc + ((t.ready || t.analyzed) ? 1 : 0), 0);
+  const lyricsN = (lib.tracks || []).reduce((acc, t) => acc + (t.lyrics ? 1 : 0), 0);
+  const analyzingN = (lib.tracks || []).reduce((acc, t) => acc + (t.analyzing ? 1 : 0), 0);
   const homes = (lib.tracks || []).map((t) => (t.home_stamp || "") + (t.here ? "h" : "")).join("");
   const covers = (lib.tracks || []).reduce((acc, t) => acc + (t.cover ? 1 : 0), 0);
-  const next = n + ":" + tagged + ":" + (lib.scanning ? 1 : 0) + ":" + view + ":" + artist + ":" + album + ":" + playlistId + ":" + q() + ":" + playingName() + ":" + (lib.playlists || []).map((x) => x.id + x.count).join(",") + ":" + homes + ":" + shelves.length + ":" + covers;
+  const next = n + ":" + tagged + ":" + readyN + ":" + lyricsN + ":" + analyzingN + ":" + (lib.scanning ? 1 : 0) + ":" + view + ":" + artist + ":" + album + ":" + playlistId + ":" + q() + ":" + playingName() + ":" + (lib.playlists || []).map((x) => x.id + x.count).join(",") + ":" + homes + ":" + shelves.length + ":" + covers;
   if (manage && !force) return;
   if (force || next !== stamp) {
     stamp = next;

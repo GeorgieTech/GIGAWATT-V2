@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -219,12 +220,30 @@ def _library(local_only=False):
     return PEERS.merge(local)
 
 
+def _decorate_ready(tracks):
+    """Attach Time Clock / karaoke readiness from existing wave + lyrics caches."""
+    out = []
+    for t in tracks or []:
+        row = dict(t)
+        name = row.get("name") or ""
+        wave_ok = bool(name) and WAVES.ready(name)
+        lyrics_ok = bool(name) and LYRICS.ready(name)
+        analyzing = bool(name) and WAVES.analyzing(name)
+        row["analyzed"] = wave_ok
+        row["ready"] = wave_ok
+        row["lyrics"] = lyrics_ok
+        row["analyzing"] = analyzing and not wave_ok
+        out.append(row)
+    return out
+
+
 def _library_payload(local_only=False, tracks=None):
     if tracks is None:
         tracks = _library(local_only=local_only)
     peer = PEERS.snapshot()
     peer["error"] = PEERS.error
     tracks = COVERS.decorate(tracks)
+    tracks = _decorate_ready(tracks)
     return {
         "ok": True,
         "tracks": tracks,
@@ -497,6 +516,47 @@ class CryptApp(object):
             },
             "volume": self.player.volume(),
         }
+
+    def prep_track(self, name, front=False):
+        """Enqueue wave/cover/lyrics prep used for Time Clock + karaoke readiness."""
+        rel = (name or "").replace("\\", "/").lstrip("/")
+        if not rel:
+            return False
+        full = os.path.join(MUSIC_DIR, rel)
+        if not os.path.isfile(full):
+            return False
+        WAVES.ensure(rel, front=bool(front))
+        COVERS.ensure(rel, front=bool(front))
+        threading.Thread(
+            target=self._prep_lyrics,
+            args=(rel,),
+            daemon=True,
+            name="prep-lyrics",
+        ).start()
+        return True
+
+    def _prep_lyrics(self, rel):
+        try:
+            # Duration helps LRCLIB /get; search still works without it.
+            dur = 0.0
+            full = os.path.join(MUSIC_DIR, rel)
+            try:
+                raw = subprocess.check_output(
+                    [
+                        "ffprobe", "-v", "error",
+                        "-show_entries", "format=duration",
+                        "-of", "json", full,
+                    ],
+                    stderr=subprocess.DEVNULL,
+                    timeout=4,
+                )
+                data = json.loads(raw.decode("utf-8") or "{}")
+                dur = float(((data.get("format") or {}).get("duration") or 0) or 0)
+            except Exception:
+                dur = 0.0
+            LYRICS.lookup(rel, fetch=True, duration=dur)
+        except Exception:
+            traceback.print_exc()
 
     def lyrics(self, name, fetch=False, duration=0):
         rel = (name or "").strip()
@@ -1217,7 +1277,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         PEERS.drop_hot(name)
         APP.refresh()
-        self._send(200, {"ok": True, "name": name, "size": written})
+        # Same wave/cover/lyrics path used at play time — do not block the upload reply.
+        APP.prep_track(name, front=False)
+        self._send(200, {"ok": True, "name": name, "size": written, "prep": True})
 
 
 def _boot_fleet():
