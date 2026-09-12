@@ -1,0 +1,13 @@
+{
+  "name": "Gigawatt V2",
+  "user": "ubuntu",
+  "install": "./.cursor/install.sh",
+  "start": "./.cursor/start.sh",
+  "terminals": [
+    {
+      "name": "web",
+      "command": "export XDG_RUNTIME_DIR=/run/user/$(id -u) WEBUI_PORT=8080 MUSIC_DIR=/data/music PULSE_SINK=toslink; cd host-webui && exec python3 server.py"
+    }
+  ],
+  "ports": [8080]
+}
