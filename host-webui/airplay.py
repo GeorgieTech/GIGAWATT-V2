@@ -14,15 +14,12 @@ META_PIPE = "/tmp/gigawatt-airplay.meta"
 NAME_RE = re.compile(r"^[A-Za-z0-9._ -]{1,50}$")
 DEFAULT_NAME = "Gigawatt"
 
+# Same stuffing as Gigawatt Beta2 (worked). V2 auto/soxr + 0.5 s buffer skipped on TOSLINK.
 CONF_TEMPLATE = """general = {
   name = "%s";
-  interpolation = "auto";
+  interpolation = "basic";
   output_backend = "pa";
-  ignore_volume_control = "yes";
-  drift_tolerance_in_seconds = 0.012;
-  resync_threshold_in_seconds = 0.150;
-  audio_backend_buffer_desired_length_in_seconds = 0.50;
-  audio_backend_buffer_interpolation_threshold_in_seconds = 0.075;
+  ignore_volume_control = "no";
   port = 5000;
 };
 sessioncontrol = {
@@ -110,10 +107,10 @@ def _pulse_sock_path():
         return raw[5:] or "/run/pulse/native"
     if raw.startswith("/"):
         return raw
-    for path in ("/run/pulse/native", "/var/run/pulse/native"):
+    for path in ("/var/run/pulse/native", "/run/pulse/native"):
         if os.path.exists(path):
             return path
-    return "/run/pulse/native"
+    return "/var/run/pulse/native"
 
 
 def pulse_ready(timeout=0.0):
@@ -352,6 +349,7 @@ class AirPlay(object):
         self.error = ""
         self.active = False
         threading.Thread(target=self._meta_loop, daemon=True).start()
+        threading.Thread(target=self._pulse_watch, daemon=True).start()
         return True
 
     def _stop_locked(self):
@@ -372,6 +370,31 @@ class AirPlay(object):
                 proc.kill()
             except Exception:
                 pass
+
+    def _pulse_watch(self):
+        while True:
+            with self.lock:
+                proc = self.proc
+                known_active = self.active
+            if proc is None or proc.poll() is not None:
+                return
+            flowing = _pulse_airplay_playing()
+            if flowing and not known_active:
+                begin = False
+                with self.lock:
+                    if not self.active:
+                        self.active = True
+                        begin = True
+                if begin and self.on_begin:
+                    try:
+                        self.on_begin()
+                    except Exception:
+                        pass
+            elif not flowing and known_active:
+                with self.lock:
+                    if not self.title:
+                        self.active = False
+            time.sleep(1.0)
 
     def _meta_loop(self):
         buf = b""

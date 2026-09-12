@@ -11,13 +11,12 @@ import playback
 
 
 class ConfTests(unittest.TestCase):
-    def test_stuffing_is_auto_not_basic(self):
-        conf = airplay.CONF_TEMPLATE % ("Gigawatt E409", "/tmp/gigawatt-airplay.meta")
-        self.assertIn('interpolation = "auto"', conf)
-        self.assertNotIn('interpolation = "basic"', conf)
-        self.assertIn("audio_backend_buffer_desired_length_in_seconds = 0.50", conf)
-        self.assertIn("resync_threshold_in_seconds = 0.150", conf)
-        self.assertIn('ignore_volume_control = "yes"', conf)
+    def test_stuffing_matches_beta2(self):
+        conf = airplay.CONF_TEMPLATE % ("Gigawatt 39DB", "/tmp/gigawatt-airplay.meta")
+        self.assertIn('interpolation = "basic"', conf)
+        self.assertNotIn('interpolation = "auto"', conf)
+        self.assertNotIn("audio_backend_buffer_desired_length_in_seconds", conf)
+        self.assertIn('ignore_volume_control = "no"', conf)
 
 
 class NameTests(unittest.TestCase):
