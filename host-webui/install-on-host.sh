@@ -25,11 +25,17 @@ if [ -n "$APSRC" ]; then
   chown -R RPM:RPM /data/opt/airplay
 fi
 chown -R RPM:RPM /data/www /data/music /data/crypt
-if [ -f /etc/pulse/daemon.conf ] && ! grep -q 'GIGAWATT-AUDIO' /etc/pulse/daemon.conf; then
+if [ -f /etc/pulse/daemon.conf ]; then
+  if grep -q 'GIGAWATT-AUDIO' /etc/pulse/daemon.conf; then
+    sed -i '/# GIGAWATT-AUDIO/,$d' /etc/pulse/daemon.conf
+  fi
   cat >> /etc/pulse/daemon.conf << 'EOF'
 
 # GIGAWATT-AUDIO
 resample-method = speex-float-1
+avoid-resampling = no
+default-sample-rate = 96000
+alternate-sample-rate = 96000
 default-fragments = 8
 default-fragment-size-msec = 50
 high-priority = yes

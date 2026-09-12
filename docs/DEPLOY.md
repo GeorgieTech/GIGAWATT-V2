@@ -1,4 +1,4 @@
-# Deploy notes — Gigawatt V2.2.3
+# Deploy notes — Gigawatt V2.2.4
 
 Every host on this tag must run the **same** files. Do not mix versions. Convert a new SHC-2000 the same way, then push this checkout.
 
@@ -15,7 +15,7 @@ On a converted chassis (Savant startup + nginx already masked, Pulse unit in pla
 ```sh
 git clone https://github.com/GeorgieTech/GIGAWATT-V2.git
 cd GIGAWATT-V2
-git checkout v2.2.3
+git checkout v2.2.4
 chmod +x scripts/push-host.sh host-webui/install-on-host.sh
 scripts/push-host.sh 192.168.1.NEW
 ```
@@ -26,7 +26,7 @@ That copies `host-webui/FILES` to `/tmp` on the box and runs `install-on-host.sh
 curl -s http://192.168.1.NEW/api/status | python3 -c "import json,sys; print(json.load(sys.stdin).get('version'))"
 ```
 
-It must print `2.2.3` on **every** host. If one box is behind, push the same tag again. Link libraries from Settings after both are on the same version. AirPlay binaries land in `/data/opt/airplay`.
+It must print `2.2.4` on **every** host. If one box is behind, push the same tag again. Link libraries from Settings after both are on the same version. AirPlay binaries land in `/data/opt/airplay`.
 
 ## First-time unit (once per chassis)
 

@@ -212,7 +212,7 @@ def discipline_latency(state, sample, capture=PLL_CAPTURE, hold=PLL_HOLD):
     buf = float(sample.get("buffer_ms") or 0.0)
     sink = float(sample.get("sink_ms") or 0.0)
     total = float(sample.get("latency_ms") or (buf + sink))
-    if total < 20 or total > 1200:
+    if total < 20 or total > 2000:
         state["accepted"] = False
         return state
     err = total - state["lat_ms"]
@@ -229,9 +229,10 @@ def discipline_latency(state, sample, capture=PLL_CAPTURE, hold=PLL_HOLD):
     state["sink_ms"] = sink
     state["n"] = int(state.get("n") or 0) + 1
     state["jitter_ms"] = jitter * 0.78 + abs(err) * 0.22
-    if (not locked) and state["n"] >= 6 and state["jitter_ms"] < 8.0:
+    # Pulse TOSLINK is a noisy analog. 8 ms never locks when ALSA is 400 ms.
+    if (not locked) and state["n"] >= 8 and state["jitter_ms"] < 16.0:
         state["locked"] = True
-    elif locked and state["jitter_ms"] > 22.0:
+    elif locked and state["jitter_ms"] > 28.0:
         state["locked"] = False
         state["n"] = 3
     state["accepted"] = True
@@ -354,6 +355,25 @@ def _usec_field(line, prefix):
     return None
 
 
+def _normalize_latency(buf_ms, sink_ms, paplay_ms=None):
+    """Keep paplay's requested buffer. Pulse often reports 800 ms+ when the
+    SPDIF sink has been switched to 48 kHz and the client underruns 90 ms."""
+    try:
+        want = float(paplay_ms if paplay_ms is not None else _paplay_ms())
+    except (TypeError, ValueError):
+        want = 90.0
+    buf_ms = max(0.0, float(buf_ms or 0.0))
+    sink_ms = max(0.0, float(sink_ms or 0.0))
+    if buf_ms < 40 or sink_ms < 10:
+        return None
+    if buf_ms > want * 2.5:
+        buf_ms = want
+    total = buf_ms + sink_ms
+    if total < 60 or total > 2000:
+        return None
+    return {"buffer_ms": buf_ms, "sink_ms": sink_ms, "latency_ms": total}
+
+
 def _read_crypt_latency():
     """Pulse stream latency for the CRYPT paplay client, in milliseconds."""
     text = _cmd(["pactl", "list", "sink-inputs"])
@@ -387,13 +407,7 @@ def _read_crypt_latency():
         found = (buf_usec, sink_usec or 0)
     if not found:
         return None
-    buf_ms = max(0, found[0] / 1000.0)
-    sink_ms = max(0, found[1] / 1000.0)
-    total = buf_ms + sink_ms
-    # paplay still priming or tearing down reports 0 buffer; ignore those.
-    if buf_ms < 40 or sink_ms < 10 or total < 60 or total > 1200:
-        return None
-    return {"buffer_ms": buf_ms, "sink_ms": sink_ms, "latency_ms": total}
+    return _normalize_latency(found[0] / 1000.0, found[1] / 1000.0)
 
 
 def _load_clock_file():
@@ -403,7 +417,7 @@ def _load_clock_file():
         lat = float(data.get("latency_ms") or 0)
         buf = float(data.get("buffer_ms") or 0)
         sink = float(data.get("sink_ms") or 0)
-        if lat < 60 or lat > 1200 or buf < 40:
+        if lat < 60 or lat > 2000 or buf < 40:
             return None
         return {
             "latency_ms": lat,
@@ -770,7 +784,7 @@ class HostPlayer(object):
             jitter = 0.0
         self._pll = new_pll_state(lat, buf, sink)
         self._pll["jitter_ms"] = float(jitter or 0.0)
-        self._pll["locked"] = bool(saved)
+        self._pll["locked"] = bool(saved) and float(jitter or 0.0) < 16.0
         self._lat_ms = self._pll["lat_ms"]
         self._buf_ms = self._pll["buf_ms"]
         self._sink_ms = self._pll["sink_ms"]

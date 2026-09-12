@@ -44,6 +44,23 @@ class LatencyPllTests(unittest.TestCase):
         self.assertFalse(st["accepted"])
         self.assertEqual(st["lat_ms"], 360.0)
 
+    def test_clamps_huge_client_buffer(self):
+        row = player._normalize_latency(840.0, 717.0, 90)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["buffer_ms"], 90.0)
+        self.assertAlmostEqual(row["sink_ms"], 717.0)
+        self.assertLess(row["latency_ms"], 900)
+
+    def test_lock_survives_pulse_wobble(self):
+        st = player.new_pll_state(400.0, 90.0, 310.0)
+        for i in range(12):
+            sink = 310.0 + (5.0 if i % 2 else -5.0)
+            player.discipline_latency(st, {
+                "buffer_ms": 90.0, "sink_ms": sink, "latency_ms": 90.0 + sink,
+            })
+        self.assertTrue(st["locked"])
+        self.assertLess(st["jitter_ms"], 16.0)
+
 
 class FollowPlanTests(unittest.TestCase):
     def test_hold_when_close(self):
