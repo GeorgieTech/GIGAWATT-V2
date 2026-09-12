@@ -112,6 +112,43 @@ def parse_lrc(text, offset_ms=0):
     return {"meta": meta, "lines": lines}
 
 
+_TOKEN = re.compile(r"\S+\s*")
+
+
+def expand_words(lines):
+    """Give line-timed LRC per-word stamps so karaoke can follow tempo."""
+    rows = list(lines or [])
+    n = len(rows)
+    out = []
+    for i, line in enumerate(rows):
+        row = dict(line)
+        words = list(row.get("words") or [])
+        if words:
+            row["words"] = words
+            out.append(row)
+            continue
+        text = row.get("text") or ""
+        tokens = _TOKEN.findall(text) or ([text] if text else [])
+        t0 = float(row.get("t") or 0.0)
+        if i + 1 < n:
+            t1 = float(rows[i + 1].get("t") or 0.0)
+        else:
+            t1 = t0 + max(2.0, 0.45 * max(1, len(tokens)))
+        if t1 <= t0:
+            t1 = t0 + max(2.0, 0.45 * max(1, len(tokens)))
+        span = t1 - t0
+        count = float(max(1, len(tokens)))
+        built = []
+        for k, tok in enumerate(tokens):
+            built.append({
+                "t": round(t0 + span * (k / count), 3),
+                "text": tok,
+            })
+        row["words"] = built
+        out.append(row)
+    return out
+
+
 def parse_plain(text):
     lines = []
     for raw in str(text or "").replace("\r\n", "\n").split("\n"):
@@ -200,6 +237,9 @@ def _embedded_lyrics(full):
 
 def _payload(source, parsed, synced, artist="", title="", album="", name=""):
     meta = parsed.get("meta") or {}
+    lines = parsed.get("lines") or []
+    if synced:
+        lines = expand_words(lines)
     return {
         "ok": True,
         "synced": bool(synced),
@@ -208,7 +248,7 @@ def _payload(source, parsed, synced, artist="", title="", album="", name=""):
         "artist": artist or meta.get("artist") or "",
         "title": title or meta.get("title") or "",
         "album": album or meta.get("album") or "",
-        "lines": parsed.get("lines") or [],
+        "lines": lines,
     }
 
 

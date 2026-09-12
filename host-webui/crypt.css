@@ -1576,11 +1576,25 @@ body.job-busy .tabbar::before {
   min-height: 2.4em;
   letter-spacing: 0.01em;
 }
-.kara-word { color: rgba(243,230,200,0.38); }
-.kara-word.sung { color: #e07a3a; }
-.kara-word.on {
-  color: #f3e6c8;
-  text-shadow: 0 0 18px rgba(224,122,58,0.55);
+.kara-word {
+  position: relative;
+  display: inline-block;
+  color: rgba(243,230,200,0.28);
+  white-space: pre;
+  transition: color 0.08s linear;
+}
+.kara-word.sung { color: #ffb347; }
+.kara-word.on { color: rgba(243,230,200,0.28); }
+.kara-wipe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  color: #ffe44a;
+  text-shadow: 0 0 14px rgba(255, 210, 60, 0.65);
+  white-space: nowrap;
+  pointer-events: none;
 }
 .kara-plain { color: rgba(243,230,200,0.4); margin: 0 0 8px; font-size: 18px; }
 .kara-plain.on { color: #f3e6c8; }

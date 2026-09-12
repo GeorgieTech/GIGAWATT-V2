@@ -43,6 +43,34 @@ class ParseLrcTests(unittest.TestCase):
         parsed = lyrics.parse_plain("One\n\nTwo")
         self.assertEqual([row["text"] for row in parsed["lines"]], ["One", "Two"])
 
+    def test_expand_words_spreads_a_line(self):
+        lines = [
+            {"t": 1.0, "text": "Hold the line", "words": []},
+            {"t": 4.0, "text": "Next", "words": []},
+        ]
+        words = lyrics.expand_words(lines)[0]["words"]
+        self.assertEqual(len(words), 3)
+        self.assertAlmostEqual(words[0]["t"], 1.0)
+        self.assertAlmostEqual(words[1]["t"], 2.0)
+        self.assertAlmostEqual(words[2]["t"], 3.0)
+        self.assertTrue(words[0]["text"].startswith("Hold"))
+
+    def test_expand_keeps_enhanced_stamps(self):
+        lines = [{
+            "t": 1.0,
+            "text": "Hold the",
+            "words": [{"t": 1.0, "text": "Hold "}, {"t": 1.4, "text": "the"}],
+        }]
+        words = lyrics.expand_words(lines)[0]["words"]
+        self.assertEqual(len(words), 2)
+        self.assertAlmostEqual(words[1]["t"], 1.4)
+
+    def test_payload_adds_words_for_line_lrc(self):
+        parsed = lyrics.parse_lrc("[00:01.00]First glow\n[00:04.00]Second")
+        self.assertEqual(parsed["lines"][0]["words"], [])
+        data = lyrics._payload("sidecar", parsed, True)
+        self.assertGreater(len(data["lines"][0]["words"]), 1)
+
 
 class SidecarAndDropTests(unittest.TestCase):
     def setUp(self):

@@ -146,8 +146,7 @@ function lineAt(t) {
   }
   return idx;
 }
-function wordAt(line, t) {
-  const words = (line && line.words) || [];
+function wordAt(words, t) {
   let idx = -1;
   for (let i = 0; i < words.length; i++) {
     if ((words[i].t || 0) <= t) idx = i;
@@ -155,14 +154,37 @@ function wordAt(line, t) {
   }
   return idx;
 }
-function renderWords(line, t) {
+function splitWords(line, nextT) {
+  if (line.words && line.words.length) return line.words;
+  const text = line.text || "";
+  const tokens = text.match(/\S+\s*/g) || (text ? [text] : []);
+  const t0 = line.t || 0;
+  let t1 = (nextT != null && nextT > t0) ? nextT : t0 + Math.max(2, tokens.length * 0.45);
+  const span = t1 - t0;
+  const n = Math.max(1, tokens.length);
+  return tokens.map((tok, k) => ({ t: t0 + span * (k / n), text: tok }));
+}
+function renderWords(line, t, nextT) {
   if (!line) return "♪";
-  const words = line.words || [];
+  const words = splitWords(line, nextT);
   if (!words.length) return esc(line.text || "");
-  const wi = wordAt(line, t);
+  const wi = wordAt(words, t);
   return words.map((w, i) => {
-    const cls = i < wi ? "sung" : (i === wi ? "on" : "");
-    return "<span class='kara-word " + cls + "'>" + esc(w.text) + "</span>";
+    const start = w.t || 0;
+    const end = (i + 1 < words.length) ? (words[i + 1].t || start) : (nextT != null && nextT > start ? nextT : start + 0.45);
+    let cls = "";
+    let fill = 0;
+    if (i < wi) {
+      cls = "sung";
+      fill = 100;
+    } else if (i === wi) {
+      cls = "on";
+      fill = end > start ? Math.max(0, Math.min(100, ((t - start) / (end - start)) * 100)) : 100;
+    }
+    const label = esc(w.text);
+    return "<span class='kara-word " + cls + "'>" +
+      "<span class='kara-wipe' style='width:" + fill.toFixed(1) + "%'>" + label + "</span>" +
+      label + "</span>";
   }).join("");
 }
 function paint() {
@@ -179,7 +201,8 @@ function paint() {
   } else if (!rows.length) {
     $("now").textContent = playClock.name ? "No lyrics yet — fetch or drop a .lrc" : "Tap to start · pick a song below";
   } else {
-    $("now").innerHTML = renderWords(cur, t);
+    const nextT = nxt && i >= 0 ? nxt.t : (playClock.duration || (cur && cur.t + 4) || 0);
+    $("now").innerHTML = renderWords(cur, t, nextT);
   }
   const dur = playClock.duration || 0;
   $("ktime").textContent = fmt(t) + " / " + fmt(dur);

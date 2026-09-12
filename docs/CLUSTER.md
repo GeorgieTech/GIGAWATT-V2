@@ -161,6 +161,7 @@ Version trail:
 | V2.2.16 | Host Time Clock is library TOSLINK only. AirPlay does not lock or drive it. |
 | V2.2.17 | Karaoke: split queue + library search, Play next with requester name. |
 | V2.2.18 | Hide empty karaoke requester chip. |
+| V2.2.19 | Karaoke words wipe gold as Host Time Clock follows the line. |
 
 Hard rules that did **not** change: no Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.179` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID. AirPlay 1 is on this host; AirPlay 2 is not.
 
