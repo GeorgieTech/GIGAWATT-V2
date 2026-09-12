@@ -1853,9 +1853,19 @@ body.job-busy .tabbar::before {
   padding-top: 100%;
   aspect-ratio: auto;
   border-radius: 8px;
-  background: #121212;
+  background: #0a0809;
   box-shadow: 0 16px 48px rgba(0,0,0,0.55);
   overflow: hidden;
+}
+.playing-page .viz-wrap:not(.has-cover).live {
+  box-shadow:
+    0 16px 48px rgba(0,0,0,0.6),
+    0 0 0 1px rgba(196,92,38,0.22),
+    inset 0 0 48px rgba(255,43,43,0.06);
+}
+.playing-page .viz-wrap.has-cover {
+  background: #121212;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.55);
 }
 .playing-page canvas#viz,
 .playing-page body.pro-open canvas#viz,
