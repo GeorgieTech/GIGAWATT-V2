@@ -144,6 +144,7 @@ Version trail:
 | V2.1.2 | Pulse was suspending TOSLINK (idle timeout 0) and ffmpeg-resampling 44.1→96 kHz. Hold the sink, speex resample, longer ALSA fragments. |
 | V2.2.0 | Cover Art Archive album art. Found cover on Playing/Library; visualizer if missing. |
 | V2.2.1 | Cover lookup no longer walks the whole library on every clock/status tick. Waveform keeps RAM to 4 caches. |
+| V2.2.2 | Playing waveform + Time Clock keep painting when cover art is shown. Status refresh is async; cover defers instead of marking missing during wave analyze. |
 
 Hard rules that did **not** change: no Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.179` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID. AirPlay 1 is on this host; AirPlay 2 is not.
 

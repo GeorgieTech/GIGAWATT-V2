@@ -207,7 +207,10 @@ $("fetchbtn").addEventListener("click", async () => {
     $("fetchbtn").disabled = false;
   }
 });
+let tickBusy = false;
 async function tick() {
+  if (tickBusy) return;
+  tickBusy = true;
   try {
     const st = await (await fetch("/api/status")).json();
     last = st;
@@ -237,13 +240,17 @@ async function tick() {
     }
   } catch (e) {
     $("err").textContent = "Host is not answering";
+  } finally {
+    tickBusy = false;
   }
 }
 raf = requestAnimationFrame(loop);
 tick();
 setInterval(tick, 1000);
+let clockBusy = false;
 setInterval(async () => {
-  if (document.hidden || !playClock.playing) return;
+  if (document.hidden || clockBusy || !playClock.playing) return;
+  clockBusy = true;
   try {
     const st = await (await fetch("/api/clock")).json();
     const p = st.player || {};
@@ -253,6 +260,7 @@ setInterval(async () => {
     playClock.playing = !!p.playing;
     playClock.duration = p.duration || playClock.duration;
   } catch (e) {}
+  clockBusy = false;
 }, 250);
 </script>
 </body>

@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.2.1</div>
+      <div class="sub">S2 · V2.2.2</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -538,7 +538,7 @@ function applyClockSample(ck, p, snap) {
   }
   playClock = next;
 }
-let rw = { name: "", n: 0, l: [], m: [], h: [], grid: null, dur: 0, analyzing: false, timer: 0, zoomSec: 10, progress: 0, stage: "", progTimer: 0 };
+let rw = { name: "", n: 0, l: [], m: [], h: [], grid: null, dur: 0, analyzing: false, fetching: false, timer: 0, zoomSec: 10, progress: 0, stage: "", progTimer: 0 };
 const ZOOM_STEPS = [2, 3, 4, 6, 8, 10, 12, 16, 24, 32, 48];
 function zoomWindow() {
   const dur = playClock.duration || 12;
@@ -651,6 +651,8 @@ function showWaveProgress(on, pct, stage) {
 }
 function loadWave(name) {
   if (!name) {
+    if (rw.timer) clearTimeout(rw.timer);
+    rw.timer = 0;
     rw.name = "";
     rw.n = 0;
     rw.l = []; rw.m = []; rw.h = [];
@@ -658,13 +660,17 @@ function loadWave(name) {
     rw.dur = 0;
     setWaveBpm(null);
     rw.analyzing = false;
+    rw.fetching = false;
     rw.progress = 0;
     showWaveProgress(false);
     return;
   }
-  if (rw.name === name && (rw.n || rw.analyzing)) return;
+  // Ready wave: do not re-fetch. In-flight or timer-owned analyze: do not stack.
+  if (rw.name === name && rw.n) return;
+  if (rw.name === name && (rw.fetching || rw.timer)) return;
   if (rw.name !== name) {
     if (rw.timer) clearTimeout(rw.timer);
+    rw.timer = 0;
     rw.name = name;
     rw.n = 0;
     rw.l = []; rw.m = []; rw.h = [];
@@ -676,6 +682,7 @@ function loadWave(name) {
     rw.stage = "Starting";
     showWaveProgress(true, 1, "Starting");
   }
+  rw.fetching = true;
   fetch("/api/wave?name=" + encodeURIComponent(name)).then((r) => r.json()).then((data) => {
     if (rw.name !== name) return;
     if (data && data.ok && data.l && data.l.length) {
@@ -687,6 +694,8 @@ function loadWave(name) {
       setWaveBpm(rw.grid);
       rw.analyzing = false;
       rw.progress = 100;
+      if (rw.timer) clearTimeout(rw.timer);
+      rw.timer = 0;
       showWaveProgress(true, 100, "Complete");
       rw.progTimer = setTimeout(() => showWaveProgress(false), 1400);
     } else if (data && data.analyzing) {
@@ -696,17 +705,24 @@ function loadWave(name) {
       showWaveProgress(true, rw.progress, rw.stage);
       if (rw.timer) clearTimeout(rw.timer);
       rw.timer = setTimeout(() => {
+        rw.timer = 0;
         if (rw.name === name) loadWave(name);
-      }, 400);
+      }, 500);
     } else {
       rw.analyzing = false;
+      if (rw.timer) clearTimeout(rw.timer);
+      rw.timer = 0;
       showWaveProgress(false);
     }
   }).catch(() => {
     if (rw.name === name) {
       rw.analyzing = false;
+      if (rw.timer) clearTimeout(rw.timer);
+      rw.timer = 0;
       showWaveProgress(false);
     }
+  }).finally(() => {
+    if (rw.name === name) rw.fetching = false;
   });
 }
 function loadCover(name) {
@@ -718,12 +734,15 @@ function loadCover(name) {
     wrap.classList.add("has-cover");
     img.hidden = false;
     if (img.getAttribute("src") !== data.url) img.src = data.url;
+    // Cover replaces the FFT canvas only. Waveform + Time Clock keep running.
     stopViz();
+    startPlayhead();
     return;
   }
   wrap.classList.remove("has-cover");
   img.hidden = true;
   startViz();
+  startPlayhead();
 }
 $("viz").addEventListener("click", () => { unlockAudio(); toggle(); });
 if ($("coverart")) $("coverart").addEventListener("click", () => { unlockAudio(); toggle(); });
@@ -836,7 +855,6 @@ function drawViz(ts) {
     ctx.fillRect(x, y, Math.max(1, bw), bh);
   }
   ctx.globalAlpha = 1;
-  drawRekord();
 }
 
 function sizeCanvas(id, cssH) {
@@ -1067,6 +1085,28 @@ function stopViz() {
   viz.raf = 0;
 }
 
+// Playhead / waveform / Time Clock Pro: independent of the FFT viz.
+// V2.2.0 cover art called stopViz() and froze these because they shared one RAF.
+let playheadRaf = 0;
+let playheadLast = 0;
+function drawPlayhead(ts) {
+  playheadRaf = requestAnimationFrame(drawPlayhead);
+  if (document.hidden) return;
+  // ~30 fps is enough for heard/playback marks; saves DualLite/phone GPU.
+  if (ts && playheadLast && ts - playheadLast < 32) return;
+  playheadLast = ts || 0;
+  drawRekord();
+}
+function startPlayhead() {
+  if (playheadRaf) return;
+  playheadLast = 0;
+  playheadRaf = requestAnimationFrame(drawPlayhead);
+}
+function stopPlayhead() {
+  if (playheadRaf) cancelAnimationFrame(playheadRaf);
+  playheadRaf = 0;
+}
+
 function renderQueue(st) {
   const ul = $("queue");
   ul.innerHTML = "";
@@ -1174,12 +1214,16 @@ window.addEventListener("resize", () => { sizeViz(); drawRekord(); });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     stopViz();
+    stopPlayhead();
     try { tap.audio.pause(); } catch (e) {}
   } else {
-    startViz();
+    startPlayhead();
+    const coverOn = $("vizwrap") && $("vizwrap").classList.contains("has-cover");
+    if (!coverOn) startViz();
     tick();
   }
 });
+startPlayhead();
 startViz();
 ensureLib(true);
 tick();
@@ -1195,6 +1239,10 @@ async function tickClock() {
     const p = st.player || {};
     applyClockSample(p.clock || {}, p, false);
     if (p.name) syncTap(p, !!p.playing);
+    // Keep Pro panel moving even if a paint frame was skipped.
+    if ($("clockpro") && $("clockpro").open) {
+      paintClockStats(nowClock("heard"), nowClock("playback"));
+    }
   } catch (e) {}
   clockBusy = false;
 }

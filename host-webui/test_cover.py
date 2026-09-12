@@ -106,5 +106,46 @@ class IndexTests(unittest.TestCase):
             shutil.rmtree(folder, ignore_errors=True)
 
 
+class DeferTests(unittest.TestCase):
+    def test_wave_busy_rethrows_instead_of_missing(self):
+        folder = tempfile.mkdtemp(prefix="crypt-cover-")
+        music = tempfile.mkdtemp(prefix="crypt-music-")
+        try:
+            track = os.path.join(music, "song.flac")
+            with open(track, "wb") as fh:
+                fh.write(b"fLaC" + b"\x00" * 40)
+            idx = cover.CoverIndex(
+                folder=folder,
+                http_json=lambda url: None,
+                http_bytes=lambda url: (b"", ""),
+                pause=0,
+            )
+            idx._alive = False
+            import wave as wave_mod
+            old_music = wave_mod.MUSIC_DIR
+            old_busy = set(wave_mod.WAVES.busy)
+            cover.MUSIC_DIR = music
+            wave_mod.MUSIC_DIR = music
+            try:
+                with wave_mod.WAVES.lock:
+                    wave_mod.WAVES.busy.add("song.flac")
+                raw, kind, deferred = idx._local_bytes("song.flac")
+                self.assertEqual(raw, b"")
+                self.assertTrue(deferred)
+                idx._resolve("song.flac")
+                key = cover.album_key("", "", "song.flac")
+                self.assertFalse(idx.index.get(key, {}).get("missing"))
+                self.assertIn("song.flac", idx.queue)
+            finally:
+                with wave_mod.WAVES.lock:
+                    wave_mod.WAVES.busy.clear()
+                    wave_mod.WAVES.busy.update(old_busy)
+                wave_mod.MUSIC_DIR = old_music
+                cover.MUSIC_DIR = old_music
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+            shutil.rmtree(music, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

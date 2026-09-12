@@ -91,6 +91,10 @@ def _save_eq(gains):
 MAX_UPLOAD = int(os.environ.get("MAX_UPLOAD", str(400 * 1024 * 1024)))
 AUDIO_EXT = (".mp3", ".flac", ".opus", ".ogg", ".wav", ".m4a", ".aac")
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._+\- ()\[\]]+")
+_DISK_TTL = 20.0
+_DISK_CACHE = {"t": 0.0, "row": None}
+_PLAYBACK_TTL = 2.0
+_PLAYBACK_CACHE = {"t": 0.0, "row": None}
 MIME = {
     ".mp3": "audio/mpeg",
     ".flac": "audio/flac",
@@ -230,15 +234,38 @@ def _library_payload(local_only=False, tracks=None):
 
 
 def _disk():
+    now = time.time()
+    hit = _DISK_CACHE.get("row")
+    if hit and now - float(_DISK_CACHE.get("t") or 0) < _DISK_TTL:
+        return dict(hit)
     try:
         usage = shutil.disk_usage(MUSIC_DIR if os.path.isdir(MUSIC_DIR) else "/data")
-        return {
+        row = {
             "total": usage.total,
             "used": usage.used,
             "free": usage.free,
         }
     except OSError:
-        return {"total": 0, "used": 0, "free": 0}
+        row = {"total": 0, "used": 0, "free": 0}
+    _DISK_CACHE["t"] = now
+    _DISK_CACHE["row"] = row
+    return dict(row)
+
+
+def _playback_cached():
+    now = time.time()
+    hit = _PLAYBACK_CACHE.get("row")
+    if hit and now - float(_PLAYBACK_CACHE.get("t") or 0) < _PLAYBACK_TTL:
+        return dict(hit)
+    row = load_playback()
+    _PLAYBACK_CACHE["t"] = now
+    _PLAYBACK_CACHE["row"] = row
+    return dict(row)
+
+
+def _playback_invalidate():
+    _PLAYBACK_CACHE["t"] = 0.0
+    _PLAYBACK_CACHE["row"] = None
 
 
 def _hello_extra():
@@ -306,6 +333,7 @@ class CryptApp(object):
         self.player.set_eq(_load_eq())
         PEERS.player = self.player
         self._status_refresh = 0.0
+        self._refresh_busy = False
         PEERS.purge_unlinked_hot()
         self.evict_unlinked()
         self.refresh()
@@ -327,6 +355,14 @@ class CryptApp(object):
                 self.index = self.order.index(cur)
             elif self.index >= len(self.order):
                 self.index = len(self.order) - 1 if self.order else -1
+
+    def _safe_refresh(self):
+        try:
+            self.refresh()
+        except Exception:
+            traceback.print_exc()
+        finally:
+            self._refresh_busy = False
 
     def catalog_snapshot(self):
         with self.lock:
@@ -356,9 +392,11 @@ class CryptApp(object):
 
     def status(self):
         now = time.time()
-        if now - self._status_refresh >= 8.0:
+        # Never block the 1 Hz Playing poll on a peer library merge.
+        if now - self._status_refresh >= 8.0 and not self._refresh_busy:
             self._status_refresh = now
-            self.refresh()
+            self._refresh_busy = True
+            threading.Thread(target=self._safe_refresh, name="status-refresh", daemon=True).start()
         snap = self.player.snapshot()
         with self.lock:
             tracks = list(self.tracks)
@@ -398,7 +436,7 @@ class CryptApp(object):
                 album=cover_album,
                 title=cover_title,
             ),
-            "output": load_playback().get("output") or "jack",
+            "output": _playback_cached().get("output") or "jack",
             "airplay": AIRPLAY.snapshot() if AIRPLAY is not None else {
                 "available": False, "enabled": False, "active": False,
                 "name": "", "title": "", "artist": "", "album": "", "client": "", "error": "",
@@ -497,6 +535,7 @@ class CryptApp(object):
         if output not in ("jack", "browser"):
             return load_playback(), "need jack or browser"
         pb, err = save_playback(output=output)
+        _playback_invalidate()
         if err:
             return pb, err
         snap = self.player.snapshot()
@@ -553,7 +592,7 @@ class CryptApp(object):
         return self.play_name(pl["tracks"][0], order=pl["tracks"])
 
     def _silent(self):
-        return load_playback().get("output") == "browser"
+        return _playback_cached().get("output") == "browser"
 
     def _start_name(self, name, start=0.0, nxt="", follow=False):
         if not self._ensure_local(name):
@@ -767,7 +806,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, PEERS.fleet(probe=probe, extra=_hello_extra()))
                 return
             if raw_path in ("/api/playback", "/api/airplay"):
-                pb = load_playback()
+                pb = _playback_cached()
                 air = AIRPLAY.snapshot() if AIRPLAY is not None else {}
                 self._send(200, {"ok": True, "output": pb.get("output") or "jack", "airplay": air})
                 return
@@ -936,13 +975,15 @@ class Handler(BaseHTTPRequestHandler):
                         err = AIRPLAY.snapshot().get("error") or "bad name"
                     else:
                         save_playback(airplay_name=AIRPLAY.snapshot().get("name"))
+                        _playback_invalidate()
                 if "enabled" in body and not err:
                     want = bool(body.get("enabled"))
                     save_playback(airplay=want)
+                    _playback_invalidate()
                     ok = AIRPLAY.set_enabled(want)
                     if not ok:
                         err = AIRPLAY.snapshot().get("error") or "could not start AirPlay"
-                pb = load_playback()
+                pb = _playback_cached()
                 self._send(200 if not err else 400, {
                     "ok": not err,
                     "error": err,

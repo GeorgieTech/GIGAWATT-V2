@@ -28,7 +28,7 @@ COVER_DIR = os.environ.get("CRYPT_COVERS", "/data/crypt/covers")
 INDEX_FILE = os.path.join(COVER_DIR, "index.json")
 MB = os.environ.get("CRYPT_MUSICBRAINZ", "https://musicbrainz.org/ws/2")
 CAA = os.environ.get("CRYPT_CAA", "https://coverartarchive.org")
-CLIENT = "CRYPT/2.2.0 (https://github.com/GeorgieTech/GIGAWATT-V2)"
+CLIENT = "CRYPT/2.2.2 (https://github.com/GeorgieTech/GIGAWATT-V2)"
 MAX_BYTES = 400 * 1024
 MISSING_TTL = 7 * 24 * 3600
 SIDECARS = (
@@ -309,13 +309,18 @@ class CoverIndex(object):
             return
         if self._row(key).get("found") and os.path.isfile(self._path(key)):
             return
-        raw, kind = self._local_bytes(rel)
+        raw, kind, deferred = self._local_bytes(rel)
+        mbid = ""
         if not raw:
             raw, kind, mbid = self._caa_bytes(artist, album, title)
-        else:
-            mbid = ""
         if raw and kind:
             self._store(key, raw, kind, mbid, found=True)
+            return
+        # Waveform ffmpeg was using the CPU — do not stamp "missing" yet.
+        if deferred:
+            with self.lock:
+                if rel not in self.queue and rel not in self.busy:
+                    self.queue.append(rel)
             return
         self._store(key, b"", "", "", found=False)
 
@@ -343,9 +348,10 @@ class CoverIndex(object):
             self._save()
 
     def _local_bytes(self, rel):
+        """Return (bytes, ctype, deferred). deferred means ffmpeg skipped for wave CPU."""
         rel, full = _join(rel)
         if not full:
-            return b"", ""
+            return b"", "", False
         folder = os.path.dirname(full)
         for name in SIDECARS:
             path = os.path.join(folder, name)
@@ -357,14 +363,14 @@ class CoverIndex(object):
             except OSError:
                 continue
             if raw and len(raw) <= MAX_BYTES and _ctype(raw):
-                return raw, _ctype(raw)
+                return raw, _ctype(raw), False
         os.makedirs(self.folder, exist_ok=True)
         dest = os.path.join(self.folder, "extract-" + album_key("", "", rel) + ".img")
         try:
             from wave import WAVES
             with WAVES.lock:
                 if WAVES.busy:
-                    return b"", ""
+                    return b"", "", True
         except Exception:
             pass
         try:
@@ -381,14 +387,14 @@ class CoverIndex(object):
                 raw = fh.read(MAX_BYTES + 1)
             kind = _ctype(raw)
             if raw and len(raw) <= MAX_BYTES and kind:
-                return raw, kind
+                return raw, kind, False
         except Exception:
             pass
         try:
             os.remove(dest)
         except OSError:
             pass
-        return b"", ""
+        return b"", "", False
 
     def _caa_bytes(self, artist, album, title):
         if (artist or "") in ("", UNKNOWN_ARTIST) and (album or "") in ("", UNKNOWN_ALBUM):

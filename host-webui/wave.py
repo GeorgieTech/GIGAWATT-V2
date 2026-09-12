@@ -416,11 +416,11 @@ class WaveIndex(object):
         t.start()
 
     def _remember(self, path, data):
+        # True LRU: re-insert so the oldest key is always next(iter(...)).
+        self.mem.pop(path, None)
         self.mem[path] = data
-        extra = len(self.mem) - 4
-        if extra > 0:
-            for old in list(self.mem.keys())[:extra]:
-                self.mem.pop(old, None)
+        while len(self.mem) > 4:
+            self.mem.pop(next(iter(self.mem)))
 
     def get(self, rel):
         rel = (rel or "").replace("\\", "/").lstrip("/")
@@ -431,12 +431,13 @@ class WaveIndex(object):
         path = _cache_path(rel, size, mtime)
         with self.lock:
             cached = self.mem.get(path)
-        if cached:
-            data = dict(cached)
-            data["ok"] = True
-            data["name"] = rel
-            data["analyzing"] = False
-            return data
+            if cached:
+                self._remember(path, cached)
+                data = dict(cached)
+                data["ok"] = True
+                data["name"] = rel
+                data["analyzing"] = False
+                return data
         try:
             with open(path, "r") as fh:
                 data = json.load(fh)
@@ -598,6 +599,7 @@ class WaveIndex(object):
         with self.lock:
             self._remember(path, data)
             self.error.pop(rel, None)
+            self.progress.pop(rel, None)
 
 
 WAVES = WaveIndex()
