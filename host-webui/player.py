@@ -1037,4 +1037,6 @@ class HostPlayer(object):
                 with self.lock:
                     if self._alive_locked() and not self.paused:
                         self._apply_latency_sample(sample)
-            time.sleep(0.22 if not locked else 1.0)
+            # Locked: do not fork pactl at 1 Hz — that floods Pulse ("Connection died")
+            # and syslog on this 4-core box. Capture still samples often.
+            time.sleep(0.22 if not locked else 3.0)

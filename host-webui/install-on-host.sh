@@ -42,7 +42,36 @@ high-priority = yes
 EOF
 fi
 cp /tmp/crypt-web.service /tmp/crypt-pulse.service /tmp/crypt-hostname.service /etc/systemd/system/
-systemctl mask savant-startup-manager.service nginx.service || true
+systemctl mask savant-startup-manager.service nginx.service systemd-journal-upload.service || true
+systemctl disable --now systemd-journal-upload.service 2>/dev/null || true
+# Persistent sshd: socket-activated sshd can drop kex when ffmpeg is on CPU0.
+if [ -x /usr/sbin/sshd ]; then
+  cat > /etc/systemd/system/sshd.service << 'EOF'
+[Unit]
+Description=OpenSSH server daemon
+After=network.target sshdgenkeys.service
+Wants=sshdgenkeys.service
+Conflicts=sshd.socket
+
+[Service]
+Type=simple
+ExecStartPre=/bin/mkdir -p /var/run/sshd
+ExecStartPre=/usr/sbin/sshd -t
+ExecStart=/usr/sbin/sshd -D
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+EOF
+fi
+journalctl --vacuum-size=8M >/dev/null 2>&1 || true
+for f in /var/log/syslog.1 /var/log/daemon.log.1 /var/log/kern.log.1; do
+  if [ -f "$f" ]; then
+    : > "$f"
+  fi
+done
 timeout 8 systemctl stop nginx.service || true
 timeout 8 systemctl stop savant-startup-manager.service || true
 pkill -9 -f startupManager || true
@@ -59,6 +88,15 @@ systemctl restart crypt-pulse.service
 sleep 2
 systemctl restart crypt-web.service
 sleep 2
+if [ -f /etc/systemd/system/sshd.service ] && /usr/sbin/sshd -t 2>/dev/null; then
+  systemctl stop sshd.socket 2>/dev/null || true
+  if systemctl start sshd.service; then
+    systemctl enable sshd.service
+    systemctl disable sshd.socket 2>/dev/null || true
+  else
+    systemctl start sshd.socket 2>/dev/null || true
+  fi
+fi
 echo STATUS
 systemctl is-active crypt-web.service || true
 systemctl is-active crypt-pulse.service || true
