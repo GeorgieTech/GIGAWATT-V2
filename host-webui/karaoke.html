@@ -182,9 +182,7 @@ function renderWords(line, t, nextT) {
       fill = end > start ? Math.max(0, Math.min(100, ((t - start) / (end - start)) * 100)) : 100;
     }
     const label = esc(w.text);
-    return "<span class='kara-word " + cls + "'>" +
-      "<span class='kara-wipe' style='width:" + fill.toFixed(1) + "%'>" + label + "</span>" +
-      label + "</span>";
+    return "<span class='kara-word " + cls + "' style='--fill:" + fill.toFixed(1) + "%'>" + label + "</span>";
   }).join("");
 }
 function paint() {
