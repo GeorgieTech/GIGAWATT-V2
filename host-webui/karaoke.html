@@ -27,14 +27,20 @@
   </header>
   <main class="page">
     <section class="card kara-card">
-      <div class="section-head">
-        <h2 id="kara-title">Nothing playing</h2>
-        <span class="badge" id="state">Idle</span>
+      <div class="kara-now-row">
+        <div class="kara-art" id="kara-art" aria-hidden="true"></div>
+        <div class="kara-now-meta">
+          <div class="section-head">
+            <h2 id="kara-title">Nothing playing</h2>
+            <span class="badge" id="state">Idle</span>
+          </div>
+          <div class="meta" id="kara-artist"></div>
+          <div class="kara-chip hidden" id="kara-by"></div>
+        </div>
       </div>
-      <div class="meta" id="kara-artist"></div>
-      <div class="kara-stage" id="stage">
+      <div class="kara-stage" id="stage" role="button" tabindex="0" title="Tap to play or pause">
         <div class="kara-prev" id="prev"></div>
-        <div class="kara-now" id="now"></div>
+        <div class="kara-now" id="now">Tap to start · lyrics follow this TOSLINK</div>
         <div class="kara-next" id="next"></div>
       </div>
       <div class="kara-bar" id="kbar" hidden>
@@ -44,18 +50,37 @@
         <span class="kara-src" id="src">No lyrics</span>
         <span class="kara-time" id="ktime">0:00 / 0:00</span>
       </div>
-      <p class="hint" id="hint">Drop a matching .lrc next to the track, same as MusicBee or foobar2000 OpenLyrics. Timing follows Host Time Clock (what TOSLINK is emitting). Deleting the track also deletes its lyrics.</p>
       <div class="row center kara-actions">
-        <button class="icon" onclick="api('/api/prev')" aria-label="Previous">⟨⟨</button>
-        <button class="playbig primary" id="playbtn" onclick="toggle()">Play</button>
-        <button class="icon" onclick="api('/api/next')" aria-label="Next">⟩⟩</button>
+        <button class="icon" type="button" id="prevbtn" aria-label="Previous">⟨⟨</button>
+        <button class="playbig primary" id="playbtn" type="button">Play</button>
+        <button class="icon" type="button" id="nextbtn" aria-label="Next">⟩⟩</button>
       </div>
       <div class="row center">
         <button class="ghost" id="fetchbtn" type="button">Fetch lyrics</button>
       </div>
       <div class="err" id="err"></div>
     </section>
+    <section class="kara-split">
+      <div class="card kara-pane">
+        <div class="section-head">
+          <h2>Queue</h2>
+          <span class="meta tight" id="qmeta"></span>
+        </div>
+        <ol class="queue kara-queue" id="queue"></ol>
+      </div>
+      <div class="card kara-pane">
+        <div class="section-head">
+          <h2>Library</h2>
+          <span class="meta tight" id="libmeta"></span>
+        </div>
+        <p class="hint">Search, then Play next. Your name shows on the queue.</p>
+        <input class="search" id="req-name" type="text" maxlength="32" placeholder="Your name" autocomplete="name">
+        <input class="search" id="filter" type="search" placeholder="Search the library" autocomplete="off">
+        <ul class="tracks kara-lib" id="lib"></ul>
+      </div>
+    </section>
   </main>
+  <div class="kara-toast hidden" id="toast" role="status"></div>
   <nav class="tabbar">
     <a href="/">Playing</a>
     <a href="/library">Library</a>
@@ -67,24 +92,35 @@
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
+const NAME_KEY = "gigawatt-karaoke-name";
 let last = {};
+let catalog = [];
 let lyric = { name: "", lines: [], synced: false, source: "" };
 let playClock = { at: 0, heard: 0, playing: false, duration: 0, name: "" };
 let raf = 0;
+let toastTimer = 0;
 
 function esc(s) {
   return String(s || "").replace(/[&<>"']/g, (c) => ({
     "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
   }[c]));
 }
-function titleOf(name) {
-  return String(name || "").replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
+function titleOf(t) {
+  if (t && t.title) return t.title;
+  return String((t && t.name) || t || "").replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
 }
 function fmt(sec) {
   sec = Math.max(0, sec || 0);
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return m + ":" + String(s).padStart(2, "0");
+}
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add("hidden"), 2400);
 }
 async function api(path, body) {
   const opt = body === undefined ? { method: "POST" } : {
@@ -140,13 +176,15 @@ function paint() {
   $("next").textContent = nxt ? nxt.text : "";
   if (!lyric.synced && rows.length) {
     $("now").innerHTML = rows.map((row, n) => "<div class='kara-plain" + (n === 0 ? " on" : "") + "'>" + esc(row.text) + "</div>").join("");
+  } else if (!rows.length) {
+    $("now").textContent = playClock.name ? "No lyrics yet — fetch or drop a .lrc" : "Tap to start · pick a song below";
   } else {
     $("now").innerHTML = renderWords(cur, t);
   }
   const dur = playClock.duration || 0;
   $("ktime").textContent = fmt(t) + " / " + fmt(dur);
   const bar = $("kbar");
-  if (dur > 0 && lyric.synced) {
+  if (dur > 0) {
     bar.hidden = false;
     $("kfill").style.width = Math.min(100, (t / dur) * 100) + "%";
   } else {
@@ -161,7 +199,6 @@ async function loadLyrics(name, fetchRemote) {
   if (!name) {
     lyric = { name: "", lines: [], synced: false, source: "" };
     $("src").textContent = "No lyrics";
-    $("hint").textContent = "Play a track, then this page follows TOSLINK time. Sidecar .lrc files work like MusicBee / OpenLyrics.";
     return;
   }
   let data;
@@ -178,11 +215,9 @@ async function loadLyrics(name, fetchRemote) {
   };
   if (data.ok && lyric.lines.length) {
     $("src").textContent = (data.synced ? "Synced · " : "Text · ") + (data.source || "local");
-    $("hint").textContent = "Lines follow Host Time Clock (heard TOSLINK time), not the decoder. Deleting the track also deletes its .lrc and lyrics cache.";
     $("err").textContent = "";
   } else {
     $("src").textContent = "No lyrics";
-    $("hint").textContent = data.hint || "No sidecar .lrc found. Fetch from LRCLIB, or copy an OpenLyrics / MusicBee file next to the track.";
     $("err").textContent = data.error && data.error !== "no lyrics" ? data.error : "";
   }
   $("kara-title").textContent = data.title || titleOf(name);
@@ -193,9 +228,125 @@ async function toggle() {
   if (p.playing) await api("/api/pause");
   else if (p.paused) await api("/api/resume");
   else if (p.name) await api("/api/play", { name: p.name });
+  else if ((last.queue || [])[0]) await api("/api/play", { name: last.queue[0].name });
   else if ((last.count || 0) > 0) await api("/api/next");
   tick();
 }
+function requester() {
+  return ($("req-name").value || "").trim();
+}
+function q() { return ($("filter").value || "").trim().toLowerCase(); }
+function hit(t) {
+  const s = q();
+  if (!s) return true;
+  return [t.title, t.artist, t.album, t.name].some((v) => String(v || "").toLowerCase().indexOf(s) >= 0);
+}
+function renderLib() {
+  const ul = $("lib");
+  ul.innerHTML = "";
+  const rows = catalog.filter(hit);
+  $("libmeta").textContent = rows.length ? rows.length + " tracks" : "";
+  if (!rows.length) {
+    const li = document.createElement("li");
+    li.className = "empty empty-state";
+    li.innerHTML = "<span class='empty-title'>No matches</span><span class='empty-detail'>Try another search.</span>";
+    ul.appendChild(li);
+    return;
+  }
+  rows.slice(0, 80).forEach((t) => {
+    const li = document.createElement("li");
+    const art = t.cover
+      ? "<img class='cover' src='" + esc(t.cover) + "' alt=''>"
+      : "<span class='cover'>" + esc((t.artist || t.title || "?").slice(0, 2).toUpperCase()) + "</span>";
+    li.innerHTML =
+      art +
+      "<div class='kara-lib-copy'><div class='name'>" + esc(titleOf(t)) + "</div>" +
+      "<div class='meta'>" + esc(t.artist || "Unknown artist") + "</div></div>" +
+      "<button type='button' class='ghost kara-add'>Play next</button>";
+    li.querySelector(".kara-add").onclick = (ev) => {
+      ev.stopPropagation();
+      queueTrack(t);
+    };
+    li.onclick = () => queueTrack(t);
+    ul.appendChild(li);
+  });
+}
+async function queueTrack(t) {
+  const by = requester();
+  const res = await api("/api/queue", { name: t.name, by: by });
+  if (!res || res.ok === false) {
+    $("err").textContent = (res && res.error) || "Could not queue";
+    return;
+  }
+  const who = by ? (" for " + by) : "";
+  toast("Up next: " + titleOf(t) + who);
+  $("err").textContent = "";
+  tick();
+}
+function renderQueue(st) {
+  const ul = $("queue");
+  ul.innerHTML = "";
+  const p = st.player || {};
+  const items = st.queue || [];
+  const total = st.queue_total || 0;
+  $("qmeta").textContent = total ? total + " up next" : "";
+  const nowName = p.name || "";
+  if (nowName) {
+    const li = document.createElement("li");
+    li.className = "on";
+    const by = st.requested_by ? "<span class='qby'>Requested by " + esc(st.requested_by) + "</span>" : "";
+    li.innerHTML =
+      "<span class='idx'>Now</span>" +
+      "<span class='name'>" + esc(titleOf({ name: nowName, title: $("kara-title").textContent })) +
+      by + "</span>";
+    ul.appendChild(li);
+  }
+  if (!items.length && !nowName) {
+    const li = document.createElement("li");
+    li.className = "empty empty-state";
+    li.innerHTML = "<span class='empty-title'>Queue is empty</span><span class='empty-detail'>Search the library and tap Play next.</span>";
+    ul.appendChild(li);
+    return;
+  }
+  items.forEach((t, i) => {
+    const li = document.createElement("li");
+    const by = t.requested_by ? "<span class='qby'>Requested by " + esc(t.requested_by) + "</span>" : "";
+    li.innerHTML =
+      "<span class='idx'>" + (i + 1) + "</span>" +
+      "<span class='name'>" + esc(t.title || titleOf(t.name)) + by + "</span>";
+    li.onclick = async () => {
+      await api("/api/play", { name: t.name });
+      tick();
+    };
+    ul.appendChild(li);
+  });
+}
+function paintNowArt(st) {
+  const box = $("kara-art");
+  const cover = st.cover || {};
+  if (cover.url && cover.found) {
+    box.innerHTML = "<img src='" + esc(cover.url) + "' alt=''>";
+    box.classList.add("has-img");
+  } else {
+    box.innerHTML = "";
+    box.classList.remove("has-img");
+  }
+  const chip = $("kara-by");
+  if (st.requested_by) {
+    chip.textContent = "Requested by " + st.requested_by;
+    chip.classList.remove("hidden");
+  } else {
+    chip.textContent = "";
+    chip.classList.add("hidden");
+  }
+}
+$("playbtn").addEventListener("click", toggle);
+$("prevbtn").addEventListener("click", async () => { await api("/api/prev"); tick(); });
+$("nextbtn").addEventListener("click", async () => { await api("/api/next"); tick(); });
+$("stage").addEventListener("click", toggle);
+$("stage").addEventListener("keydown", (e) => {
+  if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggle(); }
+});
 $("fetchbtn").addEventListener("click", async () => {
   const name = playClock.name || (last.player && last.player.name);
   if (!name) { $("err").textContent = "Nothing playing"; return; }
@@ -206,6 +357,11 @@ $("fetchbtn").addEventListener("click", async () => {
   } finally {
     $("fetchbtn").disabled = false;
   }
+});
+$("filter").addEventListener("input", renderLib);
+$("req-name").value = localStorage.getItem(NAME_KEY) || "";
+$("req-name").addEventListener("change", () => {
+  localStorage.setItem(NAME_KEY, requester());
 });
 let tickBusy = false;
 async function tick() {
@@ -239,15 +395,26 @@ async function tick() {
       $("kara-title").textContent = "Nothing playing";
       $("kara-artist").textContent = "";
     }
+    paintNowArt(st);
+    renderQueue(st);
   } catch (e) {
     $("err").textContent = "Host is not answering";
   } finally {
     tickBusy = false;
   }
 }
+async function loadCatalog() {
+  try {
+    const data = await (await fetch("/api/library")).json();
+    catalog = data.tracks || [];
+    renderLib();
+  } catch (e) {}
+}
 raf = requestAnimationFrame(loop);
 tick();
+loadCatalog();
 setInterval(tick, 1000);
+setInterval(loadCatalog, 20000);
 let clockBusy = false;
 setInterval(async () => {
   if (document.hidden || clockBusy || !playClock.playing || (last.airplay || {}).active) return;

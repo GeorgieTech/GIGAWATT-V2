@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
 from player import HostPlayer, MUSIC_DIR, EQ_BANDS, EQ_PRESETS, EQ_Q, clamp_eq, eq_region, toslink_clock
+from queueing import sanitize_requester, insert_play_next
 from library import CATALOG, PLAYLISTS, GENRES
 from wave import WAVES
 from lyrics import LYRICS
@@ -331,6 +332,7 @@ class CryptApp(object):
         self.index = -1
         self.tracks = []
         self.order = []
+        self.requests = {}
         self.player = HostPlayer(on_end=self._on_end)
         self.player.set_eq(_load_eq())
         PEERS.player = self.player
@@ -352,6 +354,9 @@ class CryptApp(object):
             self.order = [n for n in self.order if n in name_set]
             if not self.order:
                 self.order = list(names)
+            self.requests = dict(
+                (n, self.requests[n]) for n in self.requests if n in name_set
+            )
             cur = self.player.snapshot().get("name") or ""
             if cur in self.order:
                 self.index = self.order.index(cur)
@@ -371,8 +376,20 @@ class CryptApp(object):
         with self.lock:
             return list(self.tracks)
 
-    def _upcoming(self, order, tracks, idx, limit=5):
+    def _queue_item(self, t, name, requests):
+        row = requests.get(name) or {}
+        return {
+            "name": t.get("name") or name,
+            "size": t.get("size") or 0,
+            "title": t.get("title") or "",
+            "artist": t.get("artist") or "",
+            "cover": t.get("cover") or "",
+            "requested_by": row.get("by") or "",
+        }
+
+    def _upcoming(self, order, tracks, idx, limit=5, requests=None):
         by_name = dict((t["name"], t) for t in tracks)
+        requests = requests or {}
         n = len(order)
         if n == 0:
             return [], 0
@@ -380,7 +397,7 @@ class CryptApp(object):
             items = []
             for name in order[:limit]:
                 t = by_name.get(name) or {"name": name, "size": 0}
-                items.append({"name": t["name"], "size": t.get("size") or 0, "title": t.get("title") or ""})
+                items.append(self._queue_item(t, name, requests))
             return items, n
         if n == 1:
             return [], 0
@@ -388,7 +405,7 @@ class CryptApp(object):
         for i in range(1, n):
             name = order[(idx + i) % n]
             t = by_name.get(name) or {"name": name, "size": 0}
-            items.append({"name": t["name"], "size": t.get("size") or 0, "title": t.get("title") or ""})
+            items.append(self._queue_item(t, name, requests))
             if len(items) >= limit:
                 break
         return items, n - 1
@@ -418,7 +435,8 @@ class CryptApp(object):
             tracks = list(self.tracks)
             order = list(self.order)
             idx = self.index
-        queue, queue_total = self._upcoming(order, tracks, idx, 5)
+            requests = dict(self.requests)
+        queue, queue_total = self._upcoming(order, tracks, idx, 24, requests)
         eq = clamp_eq(snap.get("eq"))
         me = identity()
         playing_name = snap.get("name") or ""
@@ -441,6 +459,7 @@ class CryptApp(object):
             "count": len(tracks),
             "queue": queue,
             "queue_total": queue_total,
+            "requested_by": ((requests.get(playing_name) or {}).get("by") or ""),
             "eq": eq,
             "eq_preset": _match_preset(eq),
             "disk": _disk(),
@@ -594,8 +613,13 @@ class CryptApp(object):
                 self.order = list(names)
             if name not in self.order:
                 return False
+            prev = ""
+            if 0 <= self.index < len(self.order):
+                prev = self.order[self.index]
             self.index = self.order.index(name)
             nxt = self.order[self.index + 1] if self.index + 1 < len(self.order) else ""
+            if prev and prev != name:
+                self.requests.pop(prev, None)
         ok = self.player.play(name, start=start, silent=self._silent())
         if ok:
             WAVES.ensure(name, front=True)
@@ -642,9 +666,12 @@ class CryptApp(object):
         with self.lock:
             if not self.order:
                 return False
+            prev = self.order[self.index] if 0 <= self.index < len(self.order) else ""
             self.index = 0 if self.index < 0 else (self.index + 1) % len(self.order)
             name = self.order[self.index]
             nxt = self.order[self.index + 1] if self.index + 1 < len(self.order) else ""
+            if prev and prev != name:
+                self.requests.pop(prev, None)
         return self._start_name(name, 0.0, nxt)
 
     def prev_track(self):
@@ -652,10 +679,37 @@ class CryptApp(object):
         with self.lock:
             if not self.order:
                 return False
+            prev = self.order[self.index] if 0 <= self.index < len(self.order) else ""
             self.index = 0 if self.index < 0 else (self.index - 1) % len(self.order)
             name = self.order[self.index]
             nxt = self.order[self.index + 1] if self.index + 1 < len(self.order) else ""
+            if prev and prev != name:
+                self.requests.pop(prev, None)
         return self._start_name(name, 0.0, nxt)
+
+    def queue_next(self, name, by=""):
+        name = str(name or "").strip()
+        by = sanitize_requester(by)
+        if not name:
+            return False
+        self.refresh()
+        snap = self.player.snapshot()
+        idle = not (snap.get("playing") or snap.get("paused"))
+        with self.lock:
+            names = [t["name"] for t in self.tracks]
+            if name not in names:
+                return False
+            if not self.order:
+                self.order = list(names)
+            self.order, self.index = insert_play_next(self.order, self.index, name)
+            if name not in self.order:
+                self.order.insert(0, name)
+            self.requests[name] = {"by": by, "at": time.time()}
+        if idle:
+            return self.play_name(name)
+        WAVES.ensure(name)
+        COVERS.ensure(name)
+        return True
 
     def _on_end(self):
         self.next_track()
@@ -693,6 +747,8 @@ class CryptApp(object):
             return False
         CATALOG.drop_name(rel)
         PLAYLISTS.remove_everywhere(rel)
+        with self.lock:
+            self.requests.pop(rel, None)
         if refresh:
             self.refresh()
         return True
@@ -944,6 +1000,16 @@ class Handler(BaseHTTPRequestHandler):
                     order=order,
                 )
                 self._send(200 if ok else 400, {"ok": ok, "error": APP.player.error})
+                return
+            if path == "/api/queue":
+                name = (body.get("name") or "").strip()
+                by = body.get("by") or body.get("requested_by") or ""
+                ok = APP.queue_next(name, by)
+                self._send(200 if ok else 400, {
+                    "ok": ok,
+                    "error": "" if ok else (APP.player.error or "not found"),
+                    "by": sanitize_requester(by),
+                })
                 return
             if path == "/api/playlists":
                 try:

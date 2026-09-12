@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.2.16</div>
+      <div class="sub">S2 · V2.2.17</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -1134,9 +1134,10 @@ function renderQueue(st) {
   }
   items.slice(0, 5).forEach((t, i) => {
     const li = document.createElement("li");
+    const by = t.requested_by ? "<span class='qby'>Requested by " + esc(t.requested_by) + "</span>" : "";
     li.innerHTML =
       "<span class='idx'>" + (i + 1) + "</span>" +
-      "<span class='name'>" + esc(t.title || titleOf(t.name)) + "</span>";
+      "<span class='name'>" + esc(t.title || titleOf(t.name)) + by + "</span>";
     li.onclick = () => playName(t.name);
     ul.appendChild(li);
   });

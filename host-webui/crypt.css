@@ -1515,10 +1515,36 @@ body.job-busy .tabbar::before {
   box-shadow: none;
 }
 
+.karaoke-page .page { max-width: 1100px; gap: 14px; }
 .karaoke-page .kara-card { padding-bottom: 18px; }
+.kara-now-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.kara-art {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  background: #121212;
+  overflow: hidden;
+}
+.kara-art.has-img { box-shadow: 0 8px 24px rgba(0,0,0,0.45); }
+.kara-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.kara-chip {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-radius: 99px;
+  background: #1a1a1a;
+  color: var(--muted);
+  font-size: 12px;
+}
 .kara-stage {
-  margin: 12px 0 16px;
-  min-height: 42vh;
+  margin: 8px 0 12px;
+  min-height: 28vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -1530,7 +1556,9 @@ body.job-busy .tabbar::before {
     radial-gradient(circle at 50% 70%, rgba(155,28,28,0.22), transparent 62%),
     rgba(0,0,0,0.28);
   border: 1px solid var(--line);
+  cursor: pointer;
 }
+.kara-stage:focus { outline: 1px solid rgba(255,255,255,0.2); }
 .kara-prev,
 .kara-next {
   color: var(--muted);
@@ -1579,8 +1607,63 @@ body.job-busy .tabbar::before {
   margin-bottom: 8px;
 }
 .kara-actions { margin-top: 8px; }
+.kara-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+.kara-pane { min-height: 280px; }
+.kara-queue, .kara-lib {
+  max-height: 48vh;
+  overflow: auto;
+}
+.karaoke-page .queue li.on {
+  background: rgba(255,255,255,0.06);
+  cursor: default;
+}
+.queue .qby {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.kara-lib li {
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 10px;
+}
+.kara-lib .cover { width: 40px; height: 40px; font-size: 11px; }
+.kara-lib-copy { min-width: 0; }
+.kara-lib .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 650;
+}
+.kara-add { min-height: 36px; padding: 6px 10px; font-size: 12px; }
+.kara-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tab) + 18px);
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 10px 16px;
+  border-radius: 99px;
+  background: #ffffff;
+  color: #030303;
+  font-size: 13px;
+  font-weight: 650;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+  max-width: 90vw;
+}
 @media (min-width: 800px) {
   .kara-now { font-size: 36px; }
+}
+@media (max-width: 800px) {
+  .kara-split { grid-template-columns: 1fr; }
+  .kara-now-row { grid-template-columns: 56px 1fr; }
+  .kara-art { width: 56px; height: 56px; }
 }
 
 .rpt-card { padding-bottom: 18px; }
