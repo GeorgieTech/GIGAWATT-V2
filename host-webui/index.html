@@ -39,7 +39,7 @@
         <div class="job-stay" id="copy-stay">Copy-then-play — this TOSLINK waits for the file.</div>
       </div>
       <div class="viz-wrap" id="vizwrap">
-        <canvas id="viz" aria-label="Album art visualizer"></canvas>
+        <canvas id="viz" aria-label="Audio reactive visualizer"></canvas>
         <img id="coverart" alt="" hidden>
         <audio id="tap" playsinline webkit-playsinline preload="auto"></audio>
       </div>
@@ -163,6 +163,10 @@ let viz = {
   vol: 1,
   mode: "idle",
   bars: null,
+  bass: 0,
+  mid: 0,
+  treble: 0,
+  sparks: null,
   live: false
 };
 const tap = {
@@ -743,12 +747,14 @@ function loadCover(name) {
     wrap.classList.add("has-cover");
     img.hidden = false;
     if (img.getAttribute("src") !== data.url) img.src = data.url;
+    // Hide canvas via CSS; stop viz RAF for GPU idle. Playhead RAF stays independent.
     stopViz();
     startPlayhead();
     return;
   }
   wrap.classList.remove("has-cover");
   img.hidden = true;
+  img.removeAttribute("src");
   startViz();
   startPlayhead();
 }
@@ -791,6 +797,25 @@ function fftLevels(nBars) {
   return out;
 }
 
+function waveRibbon(outN) {
+  if (!tap.waveN || !tap.wave || !tap.ok) return null;
+  tap.waveN.getFloatTimeDomainData(tap.wave);
+  const n = tap.wave.length;
+  const out = new Float32Array(outN);
+  const step = n / outN;
+  for (let i = 0; i < outN; i++) {
+    const a = Math.floor(i * step);
+    const b = Math.min(n, Math.floor((i + 1) * step));
+    let peak = 0;
+    for (let k = a; k < b; k++) {
+      const v = Math.abs(tap.wave[k] || 0);
+      if (v > peak) peak = v;
+    }
+    out[i] = peak;
+  }
+  return out;
+}
+
 function drawViz(ts) {
   viz.raf = requestAnimationFrame(drawViz);
   const c = $("viz");
@@ -802,64 +827,240 @@ function drawViz(ts) {
   const dt = viz.lastTs ? Math.min(0.05, (ts - viz.lastTs) / 1000) : 0.016;
   viz.lastTs = ts;
   if (viz.mode === "play") viz.clock += dt;
-  else if (viz.mode === "idle") viz.clock += dt * 0.18;
+  else if (viz.mode === "idle") viz.clock += dt * 0.22;
+  else viz.clock += dt * 0.04;
 
-  const bars = 48;
+  const bars = 64;
   if (!viz.bars || viz.bars.length !== bars) viz.bars = new Float32Array(bars);
   const live = fftLevels(bars);
   viz.live = !!live && viz.mode === "play";
   const seed = viz.seed;
   const t = viz.clock;
   let energy = 0.08;
+  let bassAcc = 0;
+  let midAcc = 0;
+  let trebleAcc = 0;
   for (let i = 0; i < bars; i++) {
     let target;
     if (live) {
-      target = Math.pow(live[i], 0.85);
+      target = Math.pow(live[i], 0.82);
     } else if (viz.mode === "pause") {
-      target = viz.bars[i] * 0.985;
+      target = viz.bars[i] * 0.988;
     } else {
       const mid = (bars - 1) / 2;
-      const bass = 1 - Math.abs(i - mid) / mid * 0.72;
-      const n1 = 0.5 + 0.5 * Math.sin(t * (1.15 + (seed % 5) * 0.13) + i * 0.37);
-      const n2 = 0.5 + 0.5 * Math.sin(t * (2.4 + (i % 7) * 0.11) + seed * 0.01 + i * 0.19);
-      target = (0.18 + 0.5 * n1 * n2) * bass * (viz.mode === "play" ? 0.28 : 0.1);
+      const envelope = 1 - Math.abs(i - mid) / mid * 0.55;
+      const n1 = 0.5 + 0.5 * Math.sin(t * (0.9 + (seed % 7) * 0.09) + i * 0.28);
+      const n2 = 0.5 + 0.5 * Math.sin(t * (1.7 + (i % 11) * 0.08) + seed * 0.008 + i * 0.17);
+      const n3 = 0.5 + 0.5 * Math.sin(t * 0.35 + i * 0.51 + seed);
+      target = (0.12 + 0.55 * n1 * n2 + 0.18 * n3) * envelope * (viz.mode === "play" ? 0.55 : 0.22);
     }
-    const mix = live ? 0.42 : 0.22;
+    const mix = live ? 0.38 : 0.18;
     viz.bars[i] = viz.bars[i] * (1 - mix) + target * mix;
     energy += viz.bars[i];
+    if (i < bars * 0.18) bassAcc += viz.bars[i];
+    else if (i < bars * 0.55) midAcc += viz.bars[i];
+    else trebleAcc += viz.bars[i];
   }
-  energy = Math.max(0.06, Math.min(1, energy / bars * (live ? 2.2 : 1)));
-  const gap = Math.max(1, w * 0.006);
-  const bw = (w - gap * (bars + 1)) / bars;
+  energy = Math.max(0.05, Math.min(1, energy / bars * (live ? 2.35 : 1.15)));
+  const bassT = Math.min(1, (bassAcc / (bars * 0.18)) * (live ? 2.1 : 1.2));
+  const midT = Math.min(1, (midAcc / (bars * 0.37)) * (live ? 2.0 : 1.1));
+  const trebleT = Math.min(1, (trebleAcc / (bars * 0.45)) * (live ? 2.2 : 1.0));
+  viz.bass += (bassT - viz.bass) * 0.28;
+  viz.mid += (midT - viz.mid) * 0.24;
+  viz.treble += (trebleT - viz.treble) * 0.3;
+  const playMul = viz.mode === "play" ? 1 : viz.mode === "pause" ? 0.55 : 0.35;
+  const spin = t * (0.18 + viz.bass * 0.55 * playMul) + (seed % 97) * 0.01;
+
+  const cx = w * 0.5;
+  const cy = h * 0.52;
+  const R = Math.min(w, h) * 0.42;
 
   ctx.clearRect(0, 0, w, h);
-  const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, "rgba(255,43,43,0.16)");
-  g.addColorStop(0.45, "rgba(18,18,18,0.4)");
-  g.addColorStop(1, "rgba(3,3,3,0.98)");
-  ctx.fillStyle = g;
+
+  // 1) Atmospheric charcoal field — ember wash breathes with bass.
+  const bg = ctx.createLinearGradient(0, 0, w * 0.15, h);
+  bg.addColorStop(0, "#0a0809");
+  bg.addColorStop(0.4, "#12100f");
+  bg.addColorStop(1, "#050404");
+  ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
 
-  const cx = w / 2;
-  const cy = h * 0.58;
-  const rg = ctx.createRadialGradient(cx, cy, 4, cx, cy, h * 0.7);
-  rg.addColorStop(0, "rgba(255,255,255," + (0.08 + energy * 0.18) + ")");
-  rg.addColorStop(0.4, "rgba(255,43,43," + (0.10 + energy * 0.16) + ")");
-  rg.addColorStop(1, "rgba(3,3,3,0)");
-  ctx.fillStyle = rg;
+  const washX = cx + Math.sin(t * 0.23) * w * 0.08;
+  const washY = cy + Math.cos(t * 0.17) * h * 0.06;
+  const wash = ctx.createRadialGradient(washX, washY, R * 0.05, washX, washY, R * 1.55);
+  wash.addColorStop(0, "rgba(255,43,43," + (0.10 + viz.bass * 0.22 * playMul) + ")");
+  wash.addColorStop(0.35, "rgba(196,92,38," + (0.06 + viz.mid * 0.10) + ")");
+  wash.addColorStop(0.7, "rgba(243,230,200," + (0.02 + energy * 0.03) + ")");
+  wash.addColorStop(1, "rgba(5,4,4,0)");
+  ctx.fillStyle = wash;
   ctx.fillRect(0, 0, w, h);
 
+  // Soft vignette so the square hero feels full-bleed.
+  const vig = ctx.createRadialGradient(cx, cy, R * 0.55, cx, cy, Math.max(w, h) * 0.72);
+  vig.addColorStop(0, "rgba(0,0,0,0)");
+  vig.addColorStop(1, "rgba(0,0,0,0.55)");
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, w, h);
+
+  // 2) Vinyl / groove rings — concentric arcs that expand with bass.
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(spin * 0.35);
+  const rings = 7;
+  for (let r = 0; r < rings; r++) {
+    const u = (r + 1) / rings;
+    const pulse = 1 + viz.bass * 0.08 * Math.sin(t * (1.2 + r * 0.15) + r);
+    const radius = R * (0.22 + u * 0.78) * pulse;
+    const a = 0.08 + (1 - u) * 0.18 + viz.mid * 0.12 * playMul;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = r % 2
+      ? "rgba(243,230,200," + (a * 0.55).toFixed(3) + ")"
+      : "rgba(255,43,43," + (a * 0.75).toFixed(3) + ")";
+    ctx.lineWidth = Math.max(1, (r === rings - 1 ? 2.2 : 1.1) * (w / 420));
+    ctx.stroke();
+  }
+  // Hub
+  const hub = ctx.createRadialGradient(0, 0, 2, 0, 0, R * 0.16);
+  hub.addColorStop(0, "rgba(243,230,200," + (0.35 + energy * 0.25) + ")");
+  hub.addColorStop(0.45, "rgba(255,43,43," + (0.22 + viz.bass * 0.2) + ")");
+  hub.addColorStop(1, "rgba(18,18,18,0)");
+  ctx.fillStyle = hub;
+  ctx.beginPath();
+  ctx.arc(0, 0, R * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // 3) Radial spectrum spokes — mirrored hi-fi scope.
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(spin);
   for (let i = 0; i < bars; i++) {
-    const amp = Math.max(0.04, viz.bars[i]);
-    const bh = Math.max(h * 0.04, amp * h * 0.9);
+    const amp = Math.max(0.03, viz.bars[i]);
+    const ang = (i / bars) * Math.PI * 2;
+    const inner = R * (0.2 + viz.bass * 0.04);
+    const outer = inner + amp * R * (0.55 + viz.treble * 0.2);
+    const x0 = Math.cos(ang) * inner;
+    const y0 = Math.sin(ang) * inner;
+    const x1 = Math.cos(ang) * outer;
+    const y1 = Math.sin(ang) * outer;
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    const warm = i / bars;
+    if (warm < 0.33) {
+      g.addColorStop(0, "rgba(90,20,16,0.15)");
+      g.addColorStop(1, "rgba(255,43,43," + (0.35 + amp * 0.45) + ")");
+    } else if (warm < 0.66) {
+      g.addColorStop(0, "rgba(80,40,20,0.12)");
+      g.addColorStop(1, "rgba(224,122,58," + (0.28 + amp * 0.4) + ")");
+    } else {
+      g.addColorStop(0, "rgba(60,50,40,0.1)");
+      g.addColorStop(1, "rgba(243,230,200," + (0.22 + amp * 0.45) + ")");
+    }
+    ctx.strokeStyle = g;
+    ctx.lineWidth = Math.max(1.2, (w / 360) * (1.4 + amp));
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Outer energy ring
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-spin * 0.6);
+  ctx.beginPath();
+  const ringR = R * (0.98 + viz.bass * 0.06);
+  for (let i = 0; i <= bars; i++) {
+    const idx = i % bars;
+    const amp = viz.bars[idx];
+    const ang = (i / bars) * Math.PI * 2;
+    const rr = ringR * (0.92 + amp * 0.14);
+    const x = Math.cos(ang) * rr;
+    const y = Math.sin(ang) * rr;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.strokeStyle = "rgba(243,230,200," + (0.18 + energy * 0.28 * playMul) + ")";
+  ctx.lineWidth = Math.max(1.5, w / 280);
+  ctx.stroke();
+  ctx.restore();
+
+  // 4) Equator waveform ribbon (live tap when available).
+  const ribbonN = Math.max(48, Math.floor(w / 6));
+  const ribbon = waveRibbon(ribbonN);
+  ctx.save();
+  ctx.beginPath();
+  const yBase = cy;
+  const ampY = h * (0.07 + viz.mid * 0.08);
+  for (let i = 0; i < ribbonN; i++) {
+    const x = (i / (ribbonN - 1)) * w;
+    let y;
+    if (ribbon && viz.mode === "play") {
+      y = yBase
+        + Math.sin(i * 0.35 + t * 4) * ampY * 0.15
+        + (ribbon[i] * (i % 2 ? 1 : -1)) * ampY * (1.2 + viz.bass);
+    } else {
+      const bi = Math.floor((i / ribbonN) * bars) % bars;
+      y = yBase
+        + Math.sin(i * 0.22 + t * (1.4 + viz.bass)) * ampY * (0.35 + viz.bars[bi])
+        + Math.sin(i * 0.07 + t * 0.6) * ampY * 0.35;
+    }
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = "rgba(243,230,200," + (0.45 + energy * 0.35 * playMul) + ")";
+  ctx.lineWidth = Math.max(1.5, w / 320);
+  ctx.shadowColor = "rgba(255,43,43,0.25)";
+  ctx.shadowBlur = 8 + energy * 10;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // 5) Orbiting ember sparks — sparse, intentional.
+  const sparkN = 14;
+  if (!viz.sparks || viz.sparks.length !== sparkN) {
+    viz.sparks = [];
+    for (let i = 0; i < sparkN; i++) {
+      viz.sparks.push({
+        a: (i / sparkN) * Math.PI * 2 + (seed % 13) * 0.1,
+        r: 0.55 + (i % 5) * 0.08,
+        s: 0.4 + (i % 7) * 0.12,
+        size: 1.2 + (i % 3)
+      });
+    }
+  }
+  ctx.save();
+  ctx.translate(cx, cy);
+  for (let i = 0; i < sparkN; i++) {
+    const sp = viz.sparks[i];
+    const ang = sp.a + t * sp.s * (0.35 + viz.treble * 0.8 * playMul);
+    const rr = R * (sp.r + viz.treble * 0.06 + 0.03 * Math.sin(t * 2 + i));
+    const x = Math.cos(ang) * rr;
+    const y = Math.sin(ang) * rr;
+    const alpha = (0.25 + viz.treble * 0.45 * playMul) * (0.5 + 0.5 * Math.sin(t * 3 + i));
+    ctx.beginPath();
+    ctx.arc(x, y, sp.size * (w / 400) * (1 + viz.treble * 0.4), 0, Math.PI * 2);
+    ctx.fillStyle = i % 3 === 0
+      ? "rgba(255,43,43," + alpha.toFixed(3) + ")"
+      : "rgba(243,230,200," + (alpha * 0.9).toFixed(3) + ")";
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Floor mirror bars — thin, secondary, keeps the old bar DNA without dominating.
+  const floorH = h * 0.14;
+  const gap = Math.max(1, w * 0.004);
+  const bw = (w - gap * (bars + 1)) / bars;
+  for (let i = 0; i < bars; i++) {
+    const amp = Math.max(0.02, viz.bars[i]);
+    const bh = Math.max(2, amp * floorH * (0.7 + viz.bass * 0.4));
     const x = gap + i * (bw + gap);
-    const y = h - bh - h * 0.08;
-    const bar = ctx.createLinearGradient(0, y, 0, h);
-    bar.addColorStop(0, "#ffffff");
-    bar.addColorStop(0.45, "#ff6b6b");
-    bar.addColorStop(1, "#5a0000");
-    ctx.fillStyle = bar;
-    ctx.globalAlpha = 0.62 + energy * 0.38;
+    const y = h - bh - h * 0.03;
+    ctx.globalAlpha = 0.28 + energy * 0.35;
+    ctx.fillStyle = i % 4 === 0 ? "#ff2b2b" : "#c45c26";
     ctx.fillRect(x, y, Math.max(1, bw), bh);
   }
   ctx.globalAlpha = 1;
