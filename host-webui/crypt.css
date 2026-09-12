@@ -1542,6 +1542,7 @@ body.job-busy .tabbar::before {
   color: var(--muted);
   font-size: 12px;
 }
+.kara-chip.hidden, .kara-toast.hidden { display: none; }
 .kara-stage {
   margin: 8px 0 12px;
   min-height: 28vh;
