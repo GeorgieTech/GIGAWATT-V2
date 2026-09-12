@@ -154,6 +154,7 @@ Version trail:
 | V2.2.9 | While AirPlay is playing, TOSLINK follows 44.1 kHz (else 48 kHz). Local jack restores 96 kHz after. |
 | V2.2.10 | Library Artists/Albums use the lead credit only. Featured names stay on the track, not as extra artists or split albums. |
 | V2.2.11 | Library track rows show file type and bitrate (OPUS · 160 kbps). |
+| V2.2.12 | Playing page: volume sits between pause and waveform; waveform sits lower. |
 
 Hard rules that did **not** change: no Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.179` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID. AirPlay 1 is on this host; AirPlay 2 is not.
 

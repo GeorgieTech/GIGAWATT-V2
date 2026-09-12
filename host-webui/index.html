@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.2.11</div>
+      <div class="sub">S2 · V2.2.12</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -59,6 +59,7 @@
         <button class="playbig primary" id="playbtn" type="button" aria-label="Play">Play</button>
         <button class="icon" id="nextbtn" type="button" aria-label="Next">⟩⟩</button>
       </div>
+      <div class="vol">Volume <input id="vol" type="range" min="0" max="100" value="100"></div>
       <div class="wave-scroll-wrap">
         <canvas id="wscroll" aria-label="3-band waveform"></canvas>
         <div class="wave-progress hidden" id="waveprog">
@@ -74,7 +75,6 @@
       <div class="wave-over-wrap" id="seek">
         <canvas id="wover" aria-label="Track overview"></canvas>
       </div>
-      <div class="vol">Volume <input id="vol" type="range" min="0" max="100" value="100"></div>
       <details class="clock-pro" id="clockpro">
         <summary>Time Clock / Pro</summary>
         <div class="clock-stats" id="clockstats">

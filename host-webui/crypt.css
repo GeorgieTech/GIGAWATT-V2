@@ -1713,6 +1713,13 @@ img.cover.round { border-radius: 50%; }
   background: #121212;
   border-color: rgba(255,255,255,0.08);
 }
+.playing-page .transport { margin: 4px 0 2px; }
+.playing-page .vol {
+  margin: 14px 8px 22px;
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+.playing-page .wave-scroll-wrap { margin: 8px 0 12px; }
 .playing-page .wave-over-wrap {
   border-radius: 4px;
   border: 0;
@@ -1725,7 +1732,6 @@ img.cover.round { border-radius: 50%; }
   border: 0;
   border-radius: 8px;
 }
-.playing-page .vol { text-transform: none; letter-spacing: 0.04em; }
 
 .library-page .page { gap: 18px; }
 .library-page .lib-upload,
