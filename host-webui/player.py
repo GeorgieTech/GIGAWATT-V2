@@ -144,6 +144,12 @@ EQ_PRESETS = (
         "blurb": "NAD / Bluesound house target: punch around 30–60 Hz, less deep rumble than a full bass shelf, warmer and steeper highs than Harman. 31-band 1/3-octave fit, 1 kHz at 0 dB.",
         "gains": [3.0, 4.5, 5.5, 5.5, 5.0, 4.0, 3.5, 3.0, 2.5, 2.0, 1.5, 1.0, 1.0, 0.5, 0.5, 0.0, 0.0, 0.0, -0.5, -1.0, -1.0, -2.0, -2.5, -3.0, -3.5, -4.5, -5.0, -6.0, -6.5, -7.5, -8.0],
     },
+    {
+        "id": "karaoke",
+        "name": "Karaoke",
+        "blurb": "Vocals sit on TOSLINK: cut rumble below ~80 Hz, scoop boxy 250–400 Hz, lift presence 2–4 kHz so lyrics cut through, then a little air. 1 kHz at 0 dB.",
+        "gains": [-6.0, -5.5, -4.5, -3.5, -2.5, -1.5, -0.5, 0.0, 0.5, 0.5, 0.0, -0.5, -1.0, -1.0, -0.5, 0.0, 0.0, 0.0, 0.5, 1.5, 2.5, 3.5, 3.5, 3.0, 2.0, 1.5, 1.5, 1.0, 0.5, -0.5, -1.0],
+    },
 )
 
 
