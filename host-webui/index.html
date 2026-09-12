@@ -852,7 +852,7 @@ function drawViz(ts) {
       const n1 = 0.5 + 0.5 * Math.sin(t * (0.9 + (seed % 7) * 0.09) + i * 0.28);
       const n2 = 0.5 + 0.5 * Math.sin(t * (1.7 + (i % 11) * 0.08) + seed * 0.008 + i * 0.17);
       const n3 = 0.5 + 0.5 * Math.sin(t * 0.35 + i * 0.51 + seed);
-      target = (0.12 + 0.55 * n1 * n2 + 0.18 * n3) * envelope * (viz.mode === "play" ? 0.55 : 0.22);
+      target = (0.22 + 0.62 * n1 * n2 + 0.22 * n3) * envelope * (viz.mode === "play" ? 0.85 : 0.48);
     }
     const mix = live ? 0.38 : 0.18;
     viz.bars[i] = viz.bars[i] * (1 - mix) + target * mix;
@@ -888,9 +888,9 @@ function drawViz(ts) {
   const washX = cx + Math.sin(t * 0.23) * w * 0.08;
   const washY = cy + Math.cos(t * 0.17) * h * 0.06;
   const wash = ctx.createRadialGradient(washX, washY, R * 0.05, washX, washY, R * 1.55);
-  wash.addColorStop(0, "rgba(255,43,43," + (0.10 + viz.bass * 0.22 * playMul) + ")");
-  wash.addColorStop(0.35, "rgba(196,92,38," + (0.06 + viz.mid * 0.10) + ")");
-  wash.addColorStop(0.7, "rgba(243,230,200," + (0.02 + energy * 0.03) + ")");
+  wash.addColorStop(0, "rgba(255,43,43," + (0.14 + viz.bass * 0.28 * playMul) + ")");
+  wash.addColorStop(0.35, "rgba(196,92,38," + (0.09 + viz.mid * 0.14) + ")");
+  wash.addColorStop(0.7, "rgba(243,230,200," + (0.035 + energy * 0.05) + ")");
   wash.addColorStop(1, "rgba(5,4,4,0)");
   ctx.fillStyle = wash;
   ctx.fillRect(0, 0, w, h);
@@ -911,13 +911,13 @@ function drawViz(ts) {
     const u = (r + 1) / rings;
     const pulse = 1 + viz.bass * 0.08 * Math.sin(t * (1.2 + r * 0.15) + r);
     const radius = R * (0.22 + u * 0.78) * pulse;
-    const a = 0.08 + (1 - u) * 0.18 + viz.mid * 0.12 * playMul;
+    const a = 0.14 + (1 - u) * 0.28 + viz.mid * 0.16 * playMul;
     ctx.beginPath();
     ctx.arc(0, 0, radius, 0, Math.PI * 2);
     ctx.strokeStyle = r % 2
-      ? "rgba(243,230,200," + (a * 0.55).toFixed(3) + ")"
-      : "rgba(255,43,43," + (a * 0.75).toFixed(3) + ")";
-    ctx.lineWidth = Math.max(1, (r === rings - 1 ? 2.2 : 1.1) * (w / 420));
+      ? "rgba(243,230,200," + (a * 0.7).toFixed(3) + ")"
+      : "rgba(255,43,43," + (a * 0.9).toFixed(3) + ")";
+    ctx.lineWidth = Math.max(1.2, (r === rings - 1 ? 2.6 : 1.4) * (w / 420));
     ctx.stroke();
   }
   // Hub
@@ -947,17 +947,17 @@ function drawViz(ts) {
     const g = ctx.createLinearGradient(x0, y0, x1, y1);
     const warm = i / bars;
     if (warm < 0.33) {
-      g.addColorStop(0, "rgba(90,20,16,0.15)");
-      g.addColorStop(1, "rgba(255,43,43," + (0.35 + amp * 0.45) + ")");
+      g.addColorStop(0, "rgba(90,20,16,0.22)");
+      g.addColorStop(1, "rgba(255,43,43," + (0.45 + amp * 0.5) + ")");
     } else if (warm < 0.66) {
-      g.addColorStop(0, "rgba(80,40,20,0.12)");
-      g.addColorStop(1, "rgba(224,122,58," + (0.28 + amp * 0.4) + ")");
+      g.addColorStop(0, "rgba(80,40,20,0.18)");
+      g.addColorStop(1, "rgba(224,122,58," + (0.38 + amp * 0.45) + ")");
     } else {
-      g.addColorStop(0, "rgba(60,50,40,0.1)");
-      g.addColorStop(1, "rgba(243,230,200," + (0.22 + amp * 0.45) + ")");
+      g.addColorStop(0, "rgba(60,50,40,0.14)");
+      g.addColorStop(1, "rgba(243,230,200," + (0.32 + amp * 0.5) + ")");
     }
     ctx.strokeStyle = g;
-    ctx.lineWidth = Math.max(1.2, (w / 360) * (1.4 + amp));
+    ctx.lineWidth = Math.max(1.5, (w / 340) * (1.6 + amp));
     ctx.lineCap = "round";
     ctx.beginPath();
     ctx.moveTo(x0, y0);
