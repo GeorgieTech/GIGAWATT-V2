@@ -473,6 +473,40 @@ class WaveIndex(object):
             "stage": stage,
         }
 
+    def ready(self, rel):
+        """True when a current waveform cache exists (no enqueue)."""
+        rel = (rel or "").replace("\\", "/").lstrip("/")
+        full = _full_path(rel)
+        if not full:
+            return False
+        size, mtime = _stat(full)
+        path = _cache_path(rel, size, mtime)
+        with self.lock:
+            cached = self.mem.get(path)
+            if cached and cached.get("v") == WAVE_VER and cached.get("l") and cached.get("m") and cached.get("h"):
+                return True
+        try:
+            with open(path, "r") as fh:
+                data = json.load(fh)
+            return bool(
+                isinstance(data, dict)
+                and data.get("v") == WAVE_VER
+                and data.get("l")
+                and data.get("m")
+                and data.get("h")
+            )
+        except (OSError, ValueError, TypeError):
+            return False
+
+    def analyzing(self, rel):
+        rel = (rel or "").replace("\\", "/").lstrip("/")
+        if not rel:
+            return False
+        if self.ready(rel):
+            return False
+        with self.lock:
+            return rel in self.busy or rel in self.queue
+
     def ensure(self, rel, front=False):
         rel = (rel or "").replace("\\", "/").lstrip("/")
         if not rel or not _full_path(rel):

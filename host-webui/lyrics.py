@@ -265,6 +265,39 @@ class LyricsIndex(object):
         ident["name"] = rel
         return ident
 
+    def _remember(self, rel, payload):
+        if not rel or not isinstance(payload, dict) or not payload.get("ok"):
+            return payload
+        with self.lock:
+            self.mem[rel] = payload
+        return payload
+
+    def ready(self, rel):
+        """True when local/cached lyrics exist (no remote fetch, no embedded probe)."""
+        rel, full = _join_rel(rel)
+        if not rel:
+            return False
+        with self.lock:
+            hit = self.mem.get(rel)
+            if isinstance(hit, dict) and hit.get("ok") and hit.get("lines"):
+                return True
+        if full:
+            for path in sidecar_paths(full):
+                if not os.path.isfile(path):
+                    continue
+                try:
+                    if os.path.getsize(path) > 0:
+                        return True
+                except OSError:
+                    continue
+        cache_path = _cache_path(rel)
+        try:
+            with open(cache_path, "r") as fh:
+                cached = json.load(fh)
+            return bool(isinstance(cached, dict) and cached.get("ok") and cached.get("lines"))
+        except (OSError, ValueError, TypeError):
+            return False
+
     def lookup(self, rel, fetch=False, duration=0):
         rel, full = _join_rel(rel)
         if not full or not os.path.isfile(full):
@@ -288,23 +321,23 @@ class LyricsIndex(object):
             if path.lower().endswith(".lrc") or _TS.search(text):
                 parsed = parse_lrc(text)
                 if parsed["lines"]:
-                    return _payload("sidecar", parsed, True, artist, title, album, rel)
+                    return self._remember(rel, _payload("sidecar", parsed, True, artist, title, album, rel))
             parsed = parse_plain(text)
             if parsed["lines"]:
-                return _payload("sidecar", parsed, False, artist, title, album, rel)
+                return self._remember(rel, _payload("sidecar", parsed, False, artist, title, album, rel))
         embedded = _embedded_lyrics(full)
         if embedded.strip():
             if _TS.search(embedded):
                 parsed = parse_lrc(embedded)
                 if parsed["lines"]:
-                    return _payload("tags", parsed, True, artist, title, album, rel)
+                    return self._remember(rel, _payload("tags", parsed, True, artist, title, album, rel))
             parsed = parse_plain(embedded)
             if parsed["lines"]:
-                return _payload("tags", parsed, False, artist, title, album, rel)
+                return self._remember(rel, _payload("tags", parsed, False, artist, title, album, rel))
         if fetch:
             remote = self._fetch_lrclib(rel, full, artist, title, album, duration)
             if remote:
-                return remote
+                return self._remember(rel, remote)
         return {
             "ok": False,
             "error": "no lyrics",
