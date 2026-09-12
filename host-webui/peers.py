@@ -27,7 +27,7 @@ except ImportError:
 from player import MUSIC_DIR
 import crypt_wire
 
-VERSION = "2.2.5"
+VERSION = "2.2.6"
 PEERS_FILE = os.environ.get("CRYPT_PEERS", "/data/crypt/peers.json")
 SEEN_FILE = os.environ.get("CRYPT_SEEN", "/data/crypt/seen.json")
 HOT_FILE = os.environ.get("CRYPT_HOT", "/data/crypt/hot.json")
@@ -527,6 +527,7 @@ class PeerIndex(object):
         self._pending_evict = []
         self._load_seen()
         self._load_hot()
+        self._scrub_declined()
 
     def reload(self):
         self._cfg = load_config(self.path)
@@ -569,6 +570,15 @@ class PeerIndex(object):
                 payload[key] = extra[key]
         return payload
 
+    def _declined_keys(self):
+        return set((self.config() or {}).get("declined") or [])
+
+    def _is_declined(self, item):
+        declined = self._declined_keys()
+        if not declined:
+            return False
+        return any(bit in declined for bit in _keys_of(item))
+
     def seen_public(self):
         now = time.time()
         out = []
@@ -578,6 +588,8 @@ class PeerIndex(object):
             if now - float(row.get("last_seen") or 0) > BEACON_TTL * 4:
                 continue
             if _blocked(row.get("ip") or ""):
+                continue
+            if self._is_declined(row):
                 continue
             out.append({
                 "id": row.get("id") or "",
@@ -665,8 +677,13 @@ class PeerIndex(object):
         rows = []
         with self.lock:
             items = list(self._seen.values())
+        declined = set((self.config() or {}).get("declined") or [])
         items.sort(key=lambda r: float(r.get("last_seen") or 0), reverse=True)
-        for row in items[:16]:
+        for row in items:
+            if any(bit in declined for bit in _keys_of(row)):
+                continue
+            if len(rows) >= 16:
+                break
             rows.append({
                 "id": row.get("id") or "",
                 "uid": row.get("uid") or "",
@@ -708,7 +725,7 @@ class PeerIndex(object):
                 merged = _merge_host(hit, host)
                 hit.clear()
                 hit.update(merged)
-        if persist:
+        if persist and not self._is_declined(host):
             self._persist_seen()
 
     def note_client(self, ip, ua=""):
@@ -1079,11 +1096,15 @@ class PeerIndex(object):
         rows = [self_row]
         for shelf in cfg.get("shelves") or []:
             rows.append(_as_host(shelf, linked=True, via=["shelf"]))
+        declined = set(cfg.get("declined") or [])
         with self.lock:
             remembered = [dict(v) for v in self._seen.values()]
         for row in remembered:
             age = now - float(row.get("last_seen") or 0)
             row["online"] = age <= BEACON_TTL
+            if declined and any(bit in declined for bit in _keys_of(row)):
+                if age > BEACON_TTL:
+                    continue
             rows.append(row)
         urls = []
         if probe:
@@ -1242,6 +1263,49 @@ class PeerIndex(object):
         self._pending_evict = names
         return names
 
+    def forget_pair(self, item):
+        """Drop discovery + catalog memory for an unlinked host. Files on disk are evicted separately."""
+        item = item or {}
+        keys = set(_keys_of(item))
+        url = str(item.get("url") or "").strip()
+        ip = str(item.get("ip") or "").strip()
+        if not ip and url:
+            try:
+                ip = urlparse(url).hostname or ""
+            except Exception:
+                ip = ""
+        if ip:
+            keys.add(ip)
+            if not url:
+                url = "http://%s" % ip
+        with self.lock:
+            drop = []
+            for k, host in list(self._seen.items()):
+                if k in keys or any(bit in keys for bit in _keys_of(host)):
+                    drop.append(k)
+            for k in drop:
+                self._seen.pop(k, None)
+            if ip:
+                self._candidates.discard(ip)
+            for probe_url in list(self._probe.keys()):
+                host = urlparse(probe_url).hostname or ""
+                if probe_url == url or host == ip or probe_url in keys:
+                    self._probe.pop(probe_url, None)
+            for remote_url in list(self._remote.keys()):
+                host = urlparse(remote_url).hostname or ""
+                if remote_url == url or host == ip or remote_url in keys:
+                    self._remote.pop(remote_url, None)
+        self._persist_seen()
+
+    def _scrub_declined(self):
+        declined = self._declined_keys()
+        if not declined:
+            return
+        with self.lock:
+            ghosts = [dict(h) for h in self._seen.values() if any(bit in declined for bit in _keys_of(h))]
+        for item in ghosts:
+            self.forget_pair(item)
+
     def unlink(self, key, notify=True):
         key = str(key or "").strip()
         if not key:
@@ -1266,15 +1330,8 @@ class PeerIndex(object):
         cfg["declined"] = declined
         save_config(cfg, self.path)
         self.reload()
-        url = dropped.get("url")
-        if url:
-            self._remote.pop(url, None)
         self._pending_evict = copies
-        drop_keys = set(_keys_of(dropped) + [key])
-        with self.lock:
-            for host in self._seen.values():
-                if any(bit in drop_keys for bit in _keys_of(host)):
-                    host["linked"] = False
+        self.forget_pair(dropped)
         if notify and dropped.get("url"):
             me = identity()
             our = me.get("url") or (("http://%s" % me["ip"]) if me.get("ip") else "")

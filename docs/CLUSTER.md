@@ -148,6 +148,7 @@ Version trail:
 | V2.2.3 | Cover defer actually requeues while the worker holds busy; CAA is tried once per album. Status refresh is single-flight under the app lock. |
 | V2.2.4 | Time Clock lock: keep SPDIF at 96 kHz (`alternate-sample-rate`), clamp paplay buffer spikes, lock at 16 ms jitter. |
 | V2.2.5 | Host hygiene: pactl not 1 Hz once clock is locked; Pulse logs notice; persistent sshd; fec IRQ off CPU0; mask failed journal-upload. |
+| V2.2.6 | Unlink dumps pair memory (`seen.json`, remote catalog, probe). Boot scrubs declined ghosts. Linking is unchanged. |
 
 Hard rules that did **not** change: no Spotify / DLNA / NAS; no ffmpeg HTTP; stdlib only; never `.40` / `.178` / `.179` / `.180`; do not `dd` DualLite eMMC onto a Quad; do not spoof Carrillos UID. AirPlay 1 is on this host; AirPlay 2 is not.
 

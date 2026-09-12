@@ -276,7 +276,7 @@ async function linkHost(h) {
   }
 }
 async function unlinkHost(h) {
-  if (!confirm("Unlink " + (h.host || h.uid) + "? This jack will only show its own library. Copies pulled from that host are removed here. Files that live on that host are not deleted. It will not relink until you tap Link.")) return;
+  if (!confirm("Unlink " + (h.host || h.uid) + "? This jack will only show its own library. Pair memory of that host is dumped here. Copies pulled from that host are removed. Files that live on that host are not deleted. It will not relink until you tap Link.")) return;
   busy = true;
   try {
     const data = await api({
