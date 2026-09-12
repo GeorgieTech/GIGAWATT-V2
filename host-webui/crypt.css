@@ -517,6 +517,13 @@ body.pro-open canvas#viz { height: 168px; }
   position: relative;
   margin: 0 0 10px;
 }
+/* Hide waveform chrome only; canvases stay in DOM so playhead/wave polling keep running.
+   Toggle via WAVEFORM_VISIBLE in index.html (removes body.waveform-ui-hidden). */
+body.waveform-ui-hidden .wave-scroll-wrap,
+body.waveform-ui-hidden .wave-over-wrap,
+body.waveform-ui-hidden .wave-legend {
+  display: none;
+}
 canvas#wscroll {
   display: block;
   width: 100%;
