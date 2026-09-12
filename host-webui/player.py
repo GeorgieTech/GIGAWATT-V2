@@ -187,6 +187,24 @@ def _word_rate():
     return rate if rate > 0 else 96000
 
 
+def toslink_clock(clock, airplay_active=False, output="jack", source="jack"):
+    """Host Time Clock is library TOSLINK only. AirPlay and this-browser are off."""
+    out = dict(clock or {})
+    jack = (
+        (not airplay_active)
+        and (output or "jack") == "jack"
+        and (source or "jack") == "jack"
+    )
+    if jack:
+        return out
+    out["locked"] = False
+    out["phase"] = "idle"
+    out["warming"] = False
+    out["ppm"] = 0.0
+    out["jitter_ms"] = 0.0
+    return out
+
+
 def _samples(sec, rate=None):
     rate = int(rate or _word_rate())
     return int(round(max(0.0, float(sec or 0.0)) * rate))
@@ -827,13 +845,15 @@ class HostPlayer(object):
         rate = _word_rate()
         jitter = float(self._pll.get("jitter_ms") or 0.0)
         locked = bool(
-            self._clock_on
+            (not self._soft)
+            and self._clock_on
             and self._pll.get("locked")
             and self._alive_locked()
             and not self.paused
         )
-        if not self.media:
+        if self._soft or not self.media:
             phase = "idle"
+            locked = False
         elif self.paused or not self._alive_locked():
             phase = "frozen"
         elif not self._clock_on:
@@ -1042,7 +1062,9 @@ class HostPlayer(object):
             playing = False
             locked = False
             with self.lock:
-                playing = bool(self._alive_locked() and not self.paused)
+                playing = bool(
+                    self._alive_locked() and not self.paused and not self._soft
+                )
                 locked = bool(self._pll.get("locked") and self._clock_on)
             if not playing:
                 time.sleep(0.4)

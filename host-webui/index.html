@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.2.15</div>
+      <div class="sub">S2 · V2.2.16</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -496,7 +496,7 @@ $("wscroll").addEventListener("touchmove", (e) => {
 let playClock = {
   at: 0, heard: 0, playback: 0, pos: 0, playing: false, duration: 0, name: "",
   latency_ms: 0, buffer_ms: 0, sink_ms: 0, paplay_ms: 90, locked: false,
-  jitter_ms: 0, ppm: 0, rate: 48000, phase: "idle"
+  jitter_ms: 0, ppm: 0, rate: 96000, phase: "idle"
 };
 let clockDomAt = 0;
 function applyClockSample(ck, p, snap) {
@@ -574,12 +574,18 @@ function paintClockStats(heard, playback, force) {
   const now = performance.now();
   if (!force && now - clockDomAt < 90) return;
   clockDomAt = now;
-  $("clk-heard").textContent = fmt3(heard);
-  $("clk-play").textContent = fmt3(playback);
-  const off = Math.max(0, Math.round((playback - heard) * 1000));
+  const apOn = !!(last.airplay || {}).active;
+  const jack = !apOn && (last.output || "jack") === "jack";
+  $("clk-heard").textContent = fmt3(jack ? heard : 0);
+  $("clk-play").textContent = fmt3(jack ? playback : 0);
+  const off = jack ? Math.max(0, Math.round((playback - heard) * 1000)) : 0;
   const delta = $("clk-off");
   const lab = $("clk-off-l");
-  if (!playClock.name) {
+  if (apOn) {
+    delta.textContent = "—";
+    delta.className = "clk-delta";
+    lab.textContent = "Time Clock is for Library tracks";
+  } else if (!playClock.name) {
     delta.textContent = "—";
     delta.className = "clk-delta";
     lab.textContent = "Time Clock vs playback";
@@ -593,7 +599,7 @@ function paintClockStats(heard, playback, force) {
     lab.textContent = "behind playback";
   }
   const lock = $("clk-lock");
-  const phase = playClock.phase || "idle";
+  const phase = jack ? (playClock.phase || "idle") : "idle";
   const kinds = { locked: "lock", locking: "loose", warmup: "warm", frozen: "loose", idle: "loose" };
   lock.textContent = phase;
   lock.className = kinds[phase] || "loose";
@@ -612,22 +618,26 @@ function paintClockStats(heard, playback, force) {
     mh.style.left = "calc(" + left + "% - 2px)";
     mp.style.left = "calc(" + (end * 100).toFixed(2) + "% - 3px)";
   }
-  const rate = playClock.rate || 48000;
+  const rate = playClock.rate || 96000;
   const jit = playClock.jitter_ms || 0;
   const ppm = playClock.ppm || 0;
-  if ($("clk-rate")) $("clk-rate").textContent = (rate / 1000).toFixed(3) + " kHz";
-  if ($("clk-jit")) $("clk-jit").textContent = playClock.name ? jit.toFixed(2) + " ms" : "—";
+  if ($("clk-rate")) $("clk-rate").textContent = jack ? ((rate / 1000).toFixed(3) + " kHz") : "—";
+  if ($("clk-jit")) $("clk-jit").textContent = jack && playClock.name ? jit.toFixed(2) + " ms" : "—";
   if ($("clk-ppm")) {
-    $("clk-ppm").textContent = playClock.playing
+    $("clk-ppm").textContent = jack && playClock.playing
       ? (ppm >= 0 ? "+" : "") + ppm.toFixed(1) + " ppm"
       : "—";
   }
   const buf = playClock.buffer_ms || 0;
   const sink = playClock.sink_ms || 0;
   const pap = playClock.paplay_ms || 90;
-  $("clk-note").textContent = playClock.name
-    ? ("Path delay " + off + " ms · buffer " + Math.round(buf) + " ms · TOSLINK " + Math.round(sink) + " ms · paplay " + pap + " ms")
-    : "Cream is Time Clock (what TOSLINK is emitting). Ember is decoder playback.";
+  if (apOn) {
+    $("clk-note").textContent = "AirPlay does not use Host Time Clock. Play a Library track on this TOSLINK.";
+  } else if (playClock.name) {
+    $("clk-note").textContent = "Path delay " + off + " ms · buffer " + Math.round(buf) + " ms · TOSLINK " + Math.round(sink) + " ms · paplay " + pap + " ms";
+  } else {
+    $("clk-note").textContent = "Cream is Time Clock (what TOSLINK is emitting). Ember is decoder playback.";
+  }
 }
 function showWaveProgress(on, pct, stage) {
   const el = $("waveprog");
@@ -1179,9 +1189,15 @@ async function tick() {
       heard = tap.audio.currentTime || heard;
       playback = heard;
     }
-    $("meta").textContent = fmt(heard) + " / " + fmt(p.duration);
-    applyClockSample(ck, p, false);
-    paintClockStats(heard, playback, true);
+    if (apOn) {
+      $("meta").textContent = "AirPlay";
+      applyClockSample({ phase: "idle", locked: false, rate: 96000 }, { playing: false, name: "" }, true);
+      paintClockStats(0, 0, true);
+    } else {
+      $("meta").textContent = fmt(heard) + " / " + fmt(p.duration);
+      applyClockSample(ck, p, false);
+      paintClockStats(heard, playback, true);
+    }
     loadWave(p.name || "");
     $("playbtn").textContent = playing ? "Pause" : "Play";
     $("playbtn").setAttribute("aria-label", playing ? "Pause" : "Play");

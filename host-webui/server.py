@@ -15,7 +15,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
-from player import HostPlayer, MUSIC_DIR, EQ_BANDS, EQ_PRESETS, EQ_Q, clamp_eq, eq_region
+from player import HostPlayer, MUSIC_DIR, EQ_BANDS, EQ_PRESETS, EQ_Q, clamp_eq, eq_region, toslink_clock
 from library import CATALOG, PLAYLISTS, GENRES
 from wave import WAVES
 from lyrics import LYRICS
@@ -404,6 +404,16 @@ class CryptApp(object):
         if launch:
             threading.Thread(target=self._safe_refresh, name="status-refresh", daemon=True).start()
         snap = self.player.snapshot()
+        ap = AIRPLAY.snapshot() if AIRPLAY is not None else {
+            "available": False, "enabled": False, "active": False,
+            "name": "", "title": "", "artist": "", "album": "", "client": "", "error": "",
+        }
+        snap["clock"] = toslink_clock(
+            snap.get("clock"),
+            airplay_active=bool(ap.get("active")),
+            output=_playback_cached().get("output") or "jack",
+            source=snap.get("source") or "jack",
+        )
         with self.lock:
             tracks = list(self.tracks)
             order = list(self.order)
@@ -443,14 +453,18 @@ class CryptApp(object):
                 title=cover_title,
             ),
             "output": _playback_cached().get("output") or "jack",
-            "airplay": AIRPLAY.snapshot() if AIRPLAY is not None else {
-                "available": False, "enabled": False, "active": False,
-                "name": "", "title": "", "artist": "", "album": "", "client": "", "error": "",
-            },
+            "airplay": ap,
         }
 
     def clock(self):
         snap = self.player.snapshot()
+        ap = AIRPLAY.snapshot() if AIRPLAY is not None else {}
+        ck = toslink_clock(
+            snap.get("clock"),
+            airplay_active=bool(ap.get("active")),
+            output=_playback_cached().get("output") or "jack",
+            source=snap.get("source") or "jack",
+        )
         return {
             "ok": True,
             "player": {
@@ -460,7 +474,7 @@ class CryptApp(object):
                 "position": snap.get("position"),
                 "playback": snap.get("playback"),
                 "duration": snap.get("duration"),
-                "clock": snap.get("clock") or {},
+                "clock": ck,
             },
             "volume": self.player.volume(),
         }

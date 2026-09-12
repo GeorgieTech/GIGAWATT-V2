@@ -215,8 +215,9 @@ async function tick() {
     const st = await (await fetch("/api/status")).json();
     last = st;
     const p = st.player || {};
-    const playing = !!p.playing;
-    const paused = !!p.paused;
+    const apOn = !!(st.airplay || {}).active;
+    const playing = !!p.playing && !apOn;
+    const paused = !!p.paused && !apOn;
     const ck = p.clock || {};
     playClock = {
       at: performance.now(),
@@ -249,7 +250,7 @@ tick();
 setInterval(tick, 1000);
 let clockBusy = false;
 setInterval(async () => {
-  if (document.hidden || clockBusy || !playClock.playing) return;
+  if (document.hidden || clockBusy || !playClock.playing || (last.airplay || {}).active) return;
   clockBusy = true;
   try {
     const st = await (await fetch("/api/clock")).json();

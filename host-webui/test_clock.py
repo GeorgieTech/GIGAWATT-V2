@@ -113,6 +113,29 @@ class LatencyPllTests(unittest.TestCase):
         self.assertLess(st["jitter_ms"], 24.0)
 
 
+class ToslinkClockGateTests(unittest.TestCase):
+    def test_library_jack_keeps_lock(self):
+        ck = {"locked": True, "phase": "locked", "jitter_ms": 6.0, "ppm": 1.0}
+        out = player.toslink_clock(ck)
+        self.assertTrue(out["locked"])
+        self.assertEqual(out["phase"], "locked")
+        self.assertEqual(out["jitter_ms"], 6.0)
+
+    def test_airplay_forces_idle(self):
+        ck = {"locked": True, "phase": "locking", "jitter_ms": 40.0, "ppm": 12.0}
+        out = player.toslink_clock(ck, airplay_active=True)
+        self.assertFalse(out["locked"])
+        self.assertEqual(out["phase"], "idle")
+        self.assertEqual(out["jitter_ms"], 0.0)
+        self.assertFalse(out["warming"])
+
+    def test_browser_output_forces_idle(self):
+        ck = {"locked": True, "phase": "locked"}
+        out = player.toslink_clock(ck, output="browser", source="browser")
+        self.assertFalse(out["locked"])
+        self.assertEqual(out["phase"], "idle")
+
+
 class FollowPlanTests(unittest.TestCase):
     def test_hold_when_close(self):
         plan, err = player.follow_plan(10.000, 10.008)
