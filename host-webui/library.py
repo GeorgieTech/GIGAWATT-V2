@@ -40,6 +40,8 @@ GENRES = (
 DISC_RE = re.compile(r"^(disc|disk|cd)\s*\d+$", re.I)
 TRACK_PREFIX_RE = re.compile(r"^(\d{1,3})\s*[-.)]\s*")
 PAIR_RE = re.compile(r"\s+-\s+")
+FEAT_RE = re.compile(r"\s+(?:feat\.?|ft\.?|featuring)\s+", re.I)
+COLLAB_X_RE = re.compile(r"\s+[xX]\s+")
 
 _PROBE_CMD = [
     "ffprobe",
@@ -124,8 +126,27 @@ def _probe_key(rel, size, mtime):
     return "%s|%s|%s" % (rel or "", int(size or 0), int(mtime or 0))
 
 
+def main_artist(artist, albumartist=""):
+    """Lead credit only. Featured names stay on the track, not in Artist/Album browse."""
+    tagged = (albumartist or "").strip()
+    if tagged and tagged != UNKNOWN_ARTIST:
+        return _first_artist(tagged)
+    return _first_artist(artist)
+
+
+def _first_artist(s):
+    s = (s or "").strip()
+    if not s or s == UNKNOWN_ARTIST:
+        return UNKNOWN_ARTIST
+    s = FEAT_RE.split(s, 1)[0]
+    s = COLLAB_X_RE.split(s, 1)[0]
+    s = s.split(";")[0]
+    s = s.split(",")[0].strip()
+    return s or UNKNOWN_ARTIST
+
+
 def probe_file(full):
-    info = {"title": "", "artist": "", "album": "", "track": 0, "genre": ""}
+    info = {"title": "", "artist": "", "album": "", "albumartist": "", "track": 0, "genre": ""}
     try:
         raw = subprocess.check_output(_PROBE_CMD + [full], stderr=subprocess.DEVNULL, timeout=4)
         data = json.loads(raw.decode("utf-8") or "{}")
@@ -139,7 +160,8 @@ def probe_file(full):
         if isinstance(stream.get("tags"), dict):
             tags.append(stream.get("tags"))
     info["title"] = _tag_get(tags, "title")
-    info["artist"] = _tag_get(tags, "artist", "album_artist", "albumartist")
+    info["artist"] = _tag_get(tags, "artist") or _tag_get(tags, "album_artist", "albumartist")
+    info["albumartist"] = _tag_get(tags, "album_artist", "albumartist")
     info["album"] = _tag_get(tags, "album")
     info["genre"] = _tag_get(tags, "genre")
     info["track"] = _track_no(_tag_get(tags, "track"), os.path.basename(full))
@@ -152,6 +174,7 @@ def identity_from_path(rel, probed=None, override=None):
     path_artist, path_album, path_title = _path_meta(rel)
     fn_artist, fn_title = _parse_filename_pair(path_title)
     artist = (override.get("artist") or probed.get("artist") or path_artist or fn_artist or "").strip()
+    albumartist = (override.get("albumartist") or probed.get("albumartist") or "").strip()
     album = (override.get("album") or probed.get("album") or path_album or "").strip()
     title = (override.get("title") or probed.get("title") or "").strip()
     if not title:
@@ -160,9 +183,12 @@ def identity_from_path(rel, probed=None, override=None):
         title = _pretty_title(rel)
     track = int(probed.get("track") or 0) or _track_no("", rel)
     genre = (override.get("genre") if "genre" in override else probed.get("genre") or "").strip()
+    lead = main_artist(artist or UNKNOWN_ARTIST, albumartist)
     return {
         "title": title,
         "artist": artist or UNKNOWN_ARTIST,
+        "albumartist": albumartist,
+        "main_artist": lead,
         "album": album or UNKNOWN_ALBUM,
         "track": track,
         "genre": genre,
@@ -242,6 +268,8 @@ class Library(object):
                     "mtime": item["mtime"],
                     "title": ident["title"],
                     "artist": ident["artist"],
+                    "albumartist": ident.get("albumartist") or "",
+                    "main_artist": ident.get("main_artist") or ident["artist"],
                     "album": ident["album"],
                     "track": ident["track"],
                     "genre": ident["genre"],
@@ -253,7 +281,7 @@ class Library(object):
                     missing += 1
         out.sort(
             key=lambda t: (
-                t["artist"].lower(),
+                (t.get("main_artist") or t["artist"]).lower(),
                 t["album"].lower(),
                 t["track"] or 9999,
                 t["title"].lower(),

@@ -179,10 +179,22 @@ function tracks() { return last.tracks || []; }
 function playlists() { return last.playlists || []; }
 function playingName() { return (last.player && last.player.name) || ""; }
 
+function mainArtist(t) {
+  const tagged = String((t && (t.main_artist || t.albumartist || t.album_artist)) || "").trim();
+  if (tagged && tagged !== "Unknown artist") return tagged;
+  let s = String((t && t.artist) || "").trim();
+  if (!s) return "Unknown artist";
+  s = s.split(/\s+(?:feat\.?|ft\.?|featuring)\s+/i)[0];
+  s = s.split(/\s+[xX]\s+/)[0];
+  s = s.split(";")[0];
+  s = s.split(",")[0].trim();
+  return s || "Unknown artist";
+}
+
 function artists() {
   const map = {};
   tracks().filter(hit).forEach((t) => {
-    const k = t.artist || "Unknown artist";
+    const k = mainArtist(t);
     if (!map[k]) map[k] = { name: k, count: 0, cover: t.cover || "" };
     map[k].count += 1;
     if (t.cover && !map[k].cover) map[k].cover = t.cover;
@@ -192,9 +204,10 @@ function artists() {
 function albums(forArtist) {
   const map = {};
   tracks().filter(hit).forEach((t) => {
-    if (forArtist && t.artist !== forArtist) return;
-    const key = (t.artist || "") + "\n" + (t.album || "Unknown album");
-    if (!map[key]) map[key] = { artist: t.artist, album: t.album || "Unknown album", count: 0, key: key, cover: t.cover || "" };
+    const lead = mainArtist(t);
+    if (forArtist && lead !== forArtist) return;
+    const key = lead + "\n" + (t.album || "Unknown album");
+    if (!map[key]) map[key] = { artist: lead, album: t.album || "Unknown album", count: 0, key: key, cover: t.cover || "" };
     map[key].count += 1;
     if (t.cover && !map[key].cover) map[key].cover = t.cover;
   });
@@ -202,7 +215,7 @@ function albums(forArtist) {
 }
 function viewTracks() {
   return tracks().filter((t) => {
-    if (artist && t.artist !== artist) return false;
+    if (artist && mainArtist(t) !== artist) return false;
     if (album && t.album !== album) return false;
     return hit(t);
   });
