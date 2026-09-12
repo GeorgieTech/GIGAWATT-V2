@@ -1854,3 +1854,29 @@ button.more-btn:hover { color: #fff; background: #1a1a1a; }
 @media (prefers-color-scheme: light) {
   html, body { background: #030303; color: #ffffff; color-scheme: dark; }
 }
+
+/* AirPlay: Host Time Clock is library-jack only */
+.clock-scope {
+  margin-left: 0.5rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #9a8d7c);
+  font-weight: 500;
+}
+body.airplay-on .clock-scope { color: #e07a3a; }
+.clock-airplay-note {
+  margin: 0.6rem 0 0.8rem;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: #c4b49a;
+  background: rgba(224, 122, 58, 0.08);
+  border-left: 2px solid #e07a3a;
+}
+.clock-airplay-note.hidden { display: none; }
+body.airplay-on .clock-times,
+body.airplay-on .clock-lane {
+  opacity: 0.35;
+  pointer-events: none;
+}

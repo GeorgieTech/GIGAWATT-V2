@@ -250,9 +250,11 @@ setInterval(tick, 1000);
 let clockBusy = false;
 setInterval(async () => {
   if (document.hidden || clockBusy || !playClock.playing) return;
+  if ((last.airplay || {}).active) return;
   clockBusy = true;
   try {
     const st = await (await fetch("/api/clock")).json();
+    if (st.scope === "airplay" || st.airplay) return;
     const p = st.player || {};
     const ck = p.clock || {};
     playClock.at = performance.now();

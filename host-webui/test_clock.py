@@ -201,6 +201,8 @@ class ProgressAndSamplesTests(unittest.TestCase):
     def test_samples_at_48k(self):
         self.assertEqual(player._samples(1.0, 48000), 48000)
         self.assertEqual(player._samples(0.020833, 48000), 1000)
+        self.assertEqual(player._stream_rate(), 48000)
+        self.assertEqual(player._word_rate(), 96000)
 
     def test_progress_prefers_last_out_time_us(self):
         fd, path = tempfile.mkstemp(prefix="crypt-ff-")

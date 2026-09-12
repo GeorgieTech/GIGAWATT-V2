@@ -40,6 +40,78 @@ pa = {
 };
 """
 
+# Pulse daemon.conf fragment. Savant SPDIF is fixed at 96 kHz; AirPlay ALAC
+# lands at 44.1/48 kHz. Keep the hardware word clock at 96 and let Pulse
+# speex-remap once at the sink edge (do not fight Host Time Clock).
+PULSE_DAEMON_SNIPPET = """
+# GIGAWATT-AUDIO-BEGIN
+# TOSLINK word clock stays 96 kHz (imx-spdif). AirPlay / library streams may
+# be 44.1 or 48 kHz; Pulse remaps with speex onto the Savant sink.
+default-sample-rate = 96000
+alternate-sample-rate = 48000
+resample-method = speex-float-1
+avoid-resampling = no
+default-fragments = 8
+default-fragment-size-msec = 50
+high-priority = yes
+# GIGAWATT-AUDIO-END
+"""
+
+
+def ensure_pulse_daemon_conf(path="/etc/pulse/daemon.conf"):
+    """Install / refresh the 48→96 remap block. Safe to call on every push."""
+    try:
+        with open(path, "r") as fh:
+            text = fh.read()
+    except OSError:
+        return False
+    begin = "# GIGAWATT-AUDIO-BEGIN"
+    end = "# GIGAWATT-AUDIO-END"
+    block = PULSE_DAEMON_SNIPPET.strip() + "\n"
+    if begin in text and end in text:
+        pre = text.split(begin, 1)[0].rstrip()
+        post = text.split(end, 1)[1].lstrip("\n")
+        nxt = pre + "\n\n" + block + ("\n" + post if post else "")
+    elif "GIGAWATT-AUDIO" in text:
+        # Older single-marker append from V2.1.2 — replace from that comment on.
+        idx = text.find("# GIGAWATT-AUDIO")
+        nxt = text[:idx].rstrip() + "\n\n" + block
+    else:
+        nxt = text.rstrip() + "\n\n" + block
+    if nxt == text:
+        return True
+    try:
+        tmp = path + ".gigawatt.tmp"
+        with open(tmp, "w") as fh:
+            fh.write(nxt)
+            if not nxt.endswith("\n"):
+                fh.write("\n")
+        os.replace(tmp, path)
+        return True
+    except OSError:
+        return False
+
+
+def prepare_toslink_for_airplay():
+    """Hold the 96 kHz SPDIF sink up and unsuspend it for an AirPlay session."""
+    _relax_pulse_idle()
+    env = _pulse_env()
+    for args in (
+        ["pactl", "suspend-sink", "@DEFAULT_SINK@", "0"],
+        ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "0"],
+    ):
+        try:
+            subprocess.call(
+                args,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+                env=env,
+            )
+        except Exception:
+            pass
+
+
 ITEM_RE = re.compile(
     br"<item><type>([0-9a-fA-F]+)</type><code>([0-9a-fA-F]+)</code><length>(\d+)</length>"
     br"(?:\s*<data encoding=\"base64\">(.*?)</data>)?\s*</item>",
@@ -329,7 +401,7 @@ class AirPlay(object):
         if not pulse_ready(0):
             self.error = "waiting for PulseAudio"
             return False
-        _relax_pulse_idle()
+        prepare_toslink_for_airplay()
         try:
             self._ensure_fifo()
         except Exception as exc:

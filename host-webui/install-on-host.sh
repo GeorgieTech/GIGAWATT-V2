@@ -25,16 +25,19 @@ if [ -n "$APSRC" ]; then
   chown -R RPM:RPM /data/opt/airplay
 fi
 chown -R RPM:RPM /data/www /data/music /data/crypt
-if [ -f /etc/pulse/daemon.conf ] && ! grep -q 'GIGAWATT-AUDIO' /etc/pulse/daemon.conf; then
-  cat >> /etc/pulse/daemon.conf << 'EOF'
-
-# GIGAWATT-AUDIO
-resample-method = speex-float-1
-default-fragments = 8
-default-fragment-size-msec = 50
-high-priority = yes
-EOF
-fi
+# 96 kHz Savant SPDIF word clock + 48 kHz AirPlay/library streams.
+# Refresh the marked block on every push so older V2.1.2 snippets upgrade.
+python3 - <<'PY'
+import os, sys
+sys.path.insert(0, "/tmp")
+try:
+    import airplay as ap
+except Exception:
+    sys.path.insert(0, "/data/www")
+    import airplay as ap
+ap.ensure_pulse_daemon_conf("/etc/pulse/daemon.conf")
+print("pulse daemon.conf: AirPlay 48→96 remap ready")
+PY
 cp /tmp/crypt-web.service /tmp/crypt-pulse.service /tmp/crypt-hostname.service /etc/systemd/system/
 systemctl mask savant-startup-manager.service nginx.service || true
 timeout 8 systemctl stop nginx.service || true

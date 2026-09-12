@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.2.2</div>
+      <div class="sub">S2 · V2.2.3</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -76,11 +76,14 @@
       </div>
       <div class="vol">Volume <input id="vol" type="range" min="0" max="100" value="100"></div>
       <details class="clock-pro" id="clockpro">
-        <summary>Time Clock / Pro</summary>
+        <summary>Time Clock / Pro <span class="clock-scope" id="clk-scope">library</span></summary>
         <div class="clock-stats" id="clockstats">
           <div class="clock-hero">
             <div class="clk-delta" id="clk-off">—</div>
             <div class="clk-delta-l" id="clk-off-l">Time Clock vs playback</div>
+          </div>
+          <div class="clock-airplay-note hidden" id="clk-airplay-note">
+            Host Time Clock is for library tracks on this jack. AirPlay runs at 48 kHz; Pulse remaps onto the fixed 96 kHz TOSLINK word clock.
           </div>
           <div class="clock-times">
             <div class="clock-col heard">
@@ -107,7 +110,7 @@
           <div class="clock-meter">
             <div>
               <span class="k">Word clock</span>
-              <span class="v" id="clk-rate">48.000 kHz</span>
+              <span class="v" id="clk-rate">96.000 kHz</span>
             </div>
             <div>
               <span class="k">Jitter</span>
@@ -496,11 +499,21 @@ $("wscroll").addEventListener("touchmove", (e) => {
 let playClock = {
   at: 0, heard: 0, playback: 0, pos: 0, playing: false, duration: 0, name: "",
   latency_ms: 0, buffer_ms: 0, sink_ms: 0, paplay_ms: 90, locked: false,
-  jitter_ms: 0, ppm: 0, rate: 48000, phase: "idle"
+  jitter_ms: 0, ppm: 0, rate: 96000, stream_rate: 48000, phase: "idle", scope: "library"
 };
 let clockDomAt = 0;
 function applyClockSample(ck, p, snap) {
   const now = performance.now();
+  const scope = ck.scope || (ck.phase === "airplay" ? "airplay" : "library");
+  if (scope === "airplay") {
+    playClock = {
+      at: now, heard: 0, playback: 0, pos: 0, playing: false, duration: 0, name: "",
+      latency_ms: 0, buffer_ms: 0, sink_ms: 0, paplay_ms: 0, locked: false,
+      jitter_ms: 0, ppm: 0, rate: ck.rate || 96000, stream_rate: ck.stream_rate || 48000,
+      phase: "airplay", scope: "airplay"
+    };
+    return;
+  }
   const playing = !!p.playing;
   const name = p.name || "";
   const heard = (ck.heard != null ? ck.heard : p.position) || 0;
@@ -521,7 +534,9 @@ function applyClockSample(ck, p, snap) {
     locked: !!ck.locked,
     jitter_ms: ck.jitter_ms || 0,
     ppm: ck.ppm || 0,
-    rate: ck.rate || 48000,
+    rate: ck.rate || 96000,
+    stream_rate: ck.stream_rate || 48000,
+    scope: "library",
     phase: ck.phase || (playing && ck.locked ? "locked" : playing ? "locking" : name ? "frozen" : "idle")
   };
   const same = playClock.name === name && playClock.playing && playing;
@@ -574,6 +589,31 @@ function paintClockStats(heard, playback, force) {
   const now = performance.now();
   if (!force && now - clockDomAt < 90) return;
   clockDomAt = now;
+  const apOn = !!(last.airplay || {}).active || (playClock.phase === "airplay");
+  const scopeEl = $("clk-scope");
+  const noteEl = $("clk-airplay-note");
+  if (scopeEl) scopeEl.textContent = apOn ? "AirPlay" : "library";
+  if (noteEl) noteEl.classList.toggle("hidden", !apOn);
+  document.body.classList.toggle("airplay-on", apOn);
+  if (apOn) {
+    $("clk-heard").textContent = "—";
+    $("clk-play").textContent = "—";
+    const delta = $("clk-off");
+    const lab = $("clk-off-l");
+    delta.textContent = "AirPlay";
+    delta.className = "clk-delta";
+    lab.textContent = "Time Clock paused (library jack only)";
+    const lock = $("clk-lock");
+    if (lock) {
+      lock.textContent = "airplay";
+      lock.className = "loose";
+    }
+    if ($("clk-rate")) $("clk-rate").textContent = "96.000 kHz";
+    if ($("clk-jit")) $("clk-jit").textContent = "—";
+    if ($("clk-ppm")) $("clk-ppm").textContent = "—";
+    $("clk-note").textContent = "Optical word clock stays 96 kHz. AirPlay 48 kHz is remapped by Pulse — Host Time Clock does not steer AirPlay.";
+    return;
+  }
   $("clk-heard").textContent = fmt3(heard);
   $("clk-play").textContent = fmt3(playback);
   const off = Math.max(0, Math.round((playback - heard) * 1000));
@@ -594,7 +634,7 @@ function paintClockStats(heard, playback, force) {
   }
   const lock = $("clk-lock");
   const phase = playClock.phase || "idle";
-  const kinds = { locked: "lock", locking: "loose", warmup: "warm", frozen: "loose", idle: "loose" };
+  const kinds = { locked: "lock", locking: "loose", warmup: "warm", frozen: "loose", idle: "loose", airplay: "loose" };
   lock.textContent = phase;
   lock.className = kinds[phase] || "loose";
   const win = Math.max(600, off * 1.8, 1);
@@ -612,7 +652,7 @@ function paintClockStats(heard, playback, force) {
     mh.style.left = "calc(" + left + "% - 2px)";
     mp.style.left = "calc(" + (end * 100).toFixed(2) + "% - 3px)";
   }
-  const rate = playClock.rate || 48000;
+  const rate = playClock.rate || 96000;
   const jit = playClock.jitter_ms || 0;
   const ppm = playClock.ppm || 0;
   if ($("clk-rate")) $("clk-rate").textContent = (rate / 1000).toFixed(3) + " kHz";
@@ -626,8 +666,8 @@ function paintClockStats(heard, playback, force) {
   const sink = playClock.sink_ms || 0;
   const pap = playClock.paplay_ms || 90;
   $("clk-note").textContent = playClock.name
-    ? ("Path delay " + off + " ms · buffer " + Math.round(buf) + " ms · TOSLINK " + Math.round(sink) + " ms · paplay " + pap + " ms")
-    : "Cream is Time Clock (what TOSLINK is emitting). Ember is decoder playback.";
+    ? ("Path delay " + off + " ms · buffer " + Math.round(buf) + " ms · TOSLINK " + Math.round(sink) + " ms · paplay " + pap + " ms · stream " + ((playClock.stream_rate || 48000) / 1000).toFixed(1) + " kHz")
+    : "Cream is Time Clock (what TOSLINK is emitting). Ember is decoder playback. Word clock is the 96 kHz optical rate.";
 }
 function showWaveProgress(on, pct, stage) {
   const el = $("waveprog");
@@ -1174,16 +1214,25 @@ async function tick() {
       else artistEl.textContent = p.name ? (row.artist || "Unknown artist") : "Pick a track in Library";
     }
     const ck = p.clock || {};
-    let heard = (ck.heard != null ? ck.heard : p.position) || 0;
-    let playback = (ck.playback != null ? ck.playback : p.playback) || heard;
-    if (output === "browser" && tap.audio && p.name) {
-      heard = tap.audio.currentTime || heard;
-      playback = heard;
+    if (apOn) {
+      ck.scope = ck.scope || "airplay";
+      ck.phase = ck.phase || "airplay";
+      $("meta").textContent = "AirPlay · 48→96 kHz";
+      applyClockSample(ck, { playing: false, name: "", duration: 0 }, true);
+      paintClockStats(0, 0, true);
+      loadWave("");
+    } else {
+      let heard = (ck.heard != null ? ck.heard : p.position) || 0;
+      let playback = (ck.playback != null ? ck.playback : p.playback) || heard;
+      if (output === "browser" && tap.audio && p.name) {
+        heard = tap.audio.currentTime || heard;
+        playback = heard;
+      }
+      $("meta").textContent = fmt(heard) + " / " + fmt(p.duration);
+      applyClockSample(ck, p, false);
+      paintClockStats(heard, playback, true);
+      loadWave(p.name || "");
     }
-    $("meta").textContent = fmt(heard) + " / " + fmt(p.duration);
-    applyClockSample(ck, p, false);
-    paintClockStats(heard, playback, true);
-    loadWave(p.name || "");
     $("playbtn").textContent = playing ? "Pause" : "Play";
     $("playbtn").setAttribute("aria-label", playing ? "Pause" : "Play");
     if (!copyBusy) $("err").textContent = p.error || "";
@@ -1236,10 +1285,10 @@ async function tickClock() {
   clockBusy = true;
   try {
     const st = await (await fetch("/api/clock")).json();
+    if (st.scope === "airplay" || st.airplay) return;
     const p = st.player || {};
     applyClockSample(p.clock || {}, p, false);
     if (p.name) syncTap(p, !!p.playing);
-    // Keep Pro panel moving even if a paint frame was skipped.
     if ($("clockpro") && $("clockpro").open) {
       paintClockStats(nowClock("heard"), nowClock("playback"));
     }

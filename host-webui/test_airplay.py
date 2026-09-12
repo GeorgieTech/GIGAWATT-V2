@@ -19,6 +19,27 @@ class ConfTests(unittest.TestCase):
         self.assertIn("resync_threshold_in_seconds = 0.150", conf)
         self.assertIn('ignore_volume_control = "yes"', conf)
 
+    def test_pulse_daemon_snip_keeps_96k_word_clock(self):
+        snip = airplay.PULSE_DAEMON_SNIPPET
+        self.assertIn("default-sample-rate = 96000", snip)
+        self.assertIn("alternate-sample-rate = 48000", snip)
+        self.assertIn("speex-float-1", snip)
+
+    def test_ensure_pulse_daemon_conf_rewrites_old_block(self):
+        folder = tempfile.mkdtemp(prefix="crypt-pa-")
+        try:
+            path = os.path.join(folder, "daemon.conf")
+            with open(path, "w") as fh:
+                fh.write("# pulse\n\n# GIGAWATT-AUDIO\nresample-method = speex-float-1\n")
+            self.assertTrue(airplay.ensure_pulse_daemon_conf(path))
+            with open(path) as fh:
+                text = fh.read()
+            self.assertIn("GIGAWATT-AUDIO-BEGIN", text)
+            self.assertIn("default-sample-rate = 96000", text)
+            self.assertEqual(text.count("GIGAWATT-AUDIO-BEGIN"), 1)
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
 
 class NameTests(unittest.TestCase):
     def test_sanitize_accepts_host_stamp_names(self):

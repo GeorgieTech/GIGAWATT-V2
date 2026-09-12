@@ -16,6 +16,8 @@ PROGRESS_FILE = os.environ.get("PROGRESS_FILE", "/tmp/crypt-ff.progress")
 CLOCK_FILE = os.environ.get("CLOCK_FILE", "/data/crypt/clock.json")
 # DualLite is happier at 48 kHz; Pulse resamples onto the 96 kHz S/PDIF sink.
 RATE = os.environ.get("CRYPT_RATE", "48000")
+# Savant imx-spdif TOSLINK word clock is fixed at 96 kHz (see docs/HOST.md).
+WORD_RATE = os.environ.get("CRYPT_WORD_RATE", "96000")
 # paplay WAV-on-stdin prebuffers seconds; raw PCM + this latency is the pause window.
 try:
     LATENCY_MS = str(max(40, min(250, int(os.environ.get("CRYPT_LATENCY_MS", "90")))))
@@ -178,7 +180,8 @@ def _paplay_ms():
         return 90
 
 
-def _word_rate():
+def _stream_rate():
+    """paplay / ffmpeg PCM rate for library tracks (usually 48 kHz)."""
     try:
         rate = int(RATE)
     except (TypeError, ValueError):
@@ -186,8 +189,17 @@ def _word_rate():
     return rate if rate > 0 else 48000
 
 
+def _word_rate():
+    """Optical TOSLINK word clock on this chassis (Savant SPDIF = 96 kHz)."""
+    try:
+        rate = int(WORD_RATE)
+    except (TypeError, ValueError):
+        return 96000
+    return rate if rate > 0 else 96000
+
+
 def _samples(sec, rate=None):
-    rate = int(rate or _word_rate())
+    rate = int(rate or _stream_rate())
     return int(round(max(0.0, float(sec or 0.0)) * rate))
 
 
@@ -805,7 +817,8 @@ class HostPlayer(object):
             playback = min(playback, self.duration)
         heard = max(0.0, heard)
         offset_ms = max(0.0, (playback - heard) * 1000.0)
-        rate = _word_rate()
+        stream = _stream_rate()
+        word = _word_rate()
         jitter = float(self._pll.get("jitter_ms") or 0.0)
         locked = bool(
             self._clock_on
@@ -826,8 +839,8 @@ class HostPlayer(object):
         return {
             "heard": round(heard, 6),
             "playback": round(playback, 6),
-            "heard_samples": _samples(heard, rate),
-            "playback_samples": _samples(playback, rate),
+            "heard_samples": _samples(heard, stream),
+            "playback_samples": _samples(playback, stream),
             "offset_ms": int(round(offset_ms)),
             "latency_ms": round(self._pll["lat_ms"], 2),
             "buffer_ms": round(self._pll["buf_ms"], 2),
@@ -838,7 +851,10 @@ class HostPlayer(object):
             "ppm": round(self._ppm, 3),
             "locked": locked,
             "phase": phase,
-            "rate": rate,
+            # Optical word clock (96 kHz on Savant SPDIF). Not the AirPlay rate.
+            "rate": word,
+            "stream_rate": stream,
+            "scope": "library",
             "warming": bool(time.monotonic() < float(self._sync_warm_until or 0.0)),
         }
 

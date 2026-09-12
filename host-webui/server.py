@@ -413,6 +413,28 @@ class CryptApp(object):
                 cover_album = t.get("album") or ""
                 cover_title = t.get("title") or ""
                 break
+        air = AIRPLAY.snapshot() if AIRPLAY is not None else {
+            "available": False, "enabled": False, "active": False,
+            "name": "", "title": "", "artist": "", "album": "", "client": "", "error": "",
+        }
+        # Isolate Host Time Clock from AirPlay: status still reports airplay
+        # metadata, but player.clock stays idle so Playing Pro does not chase
+        # a 48 kHz transport against the 96 kHz word clock.
+        if air.get("active"):
+            snap = dict(snap)
+            snap["playing"] = False
+            snap["paused"] = False
+            snap["name"] = ""
+            snap["position"] = 0
+            snap["playback"] = 0
+            snap["duration"] = 0
+            snap["clock"] = _idle_clock("airplay")
+            playing_name = ""
+        elif isinstance(snap.get("clock"), dict):
+            snap = dict(snap)
+            ck = dict(snap.get("clock") or {})
+            ck["scope"] = "library"
+            snap["clock"] = ck
         return {
             "host": me.get("host") or socket.gethostname(),
             "model": me.get("model") or "SHR-S2-00",
@@ -437,16 +459,37 @@ class CryptApp(object):
                 title=cover_title,
             ),
             "output": _playback_cached().get("output") or "jack",
-            "airplay": AIRPLAY.snapshot() if AIRPLAY is not None else {
-                "available": False, "enabled": False, "active": False,
-                "name": "", "title": "", "artist": "", "album": "", "client": "", "error": "",
-            },
+            "airplay": air,
+            "clock_scope": "airplay" if air.get("active") else "library",
         }
 
     def clock(self):
+        # Host Time Clock is library/jack only. AirPlay has its own 48 kHz
+        # transport clock; do not feed PLL numbers into the Playing Pro panel.
+        if _airplay_active():
+            return {
+                "ok": True,
+                "scope": "airplay",
+                "player": {
+                    "playing": False,
+                    "paused": False,
+                    "name": "",
+                    "position": 0,
+                    "playback": 0,
+                    "duration": 0,
+                    "clock": _idle_clock("airplay"),
+                },
+                "volume": self.player.volume(),
+                "airplay": True,
+            }
         snap = self.player.snapshot()
+        ck = snap.get("clock") or {}
+        if isinstance(ck, dict):
+            ck = dict(ck)
+            ck["scope"] = "library"
         return {
             "ok": True,
+            "scope": "library",
             "player": {
                 "playing": snap.get("playing"),
                 "paused": snap.get("paused"),
@@ -454,9 +497,10 @@ class CryptApp(object):
                 "position": snap.get("position"),
                 "playback": snap.get("playback"),
                 "duration": snap.get("duration"),
-                "clock": snap.get("clock") or {},
+                "clock": ck,
             },
             "volume": self.player.volume(),
+            "airplay": False,
         }
 
     def lyrics(self, name, fetch=False, duration=0):
@@ -727,7 +771,51 @@ APP = CryptApp()
 
 
 def _on_airplay_begin():
+    # Library Host Time Clock is for jack tracks only. Stop paplay so AirPlay
+    # owns TOSLINK; Pulse remaps AirPlay 48 kHz onto the fixed 96 kHz SPDIF.
     APP.stop()
+    try:
+        from airplay import prepare_toslink_for_airplay
+        prepare_toslink_for_airplay()
+    except Exception:
+        pass
+
+
+def _airplay_active():
+    try:
+        return bool(AIRPLAY is not None and AIRPLAY.snapshot().get("active"))
+    except Exception:
+        return False
+
+
+def _idle_clock(phase="airplay"):
+    """Host Time Clock payload when the library jack is not the timing source."""
+    try:
+        from player import _word_rate, _stream_rate
+        word = _word_rate()
+        stream = _stream_rate()
+    except Exception:
+        word, stream = 96000, 48000
+    return {
+        "heard": 0.0,
+        "playback": 0.0,
+        "heard_samples": 0,
+        "playback_samples": 0,
+        "offset_ms": 0,
+        "latency_ms": 0.0,
+        "buffer_ms": 0.0,
+        "sink_ms": 0.0,
+        "paplay_ms": 0,
+        "drift_ms": 0,
+        "jitter_ms": 0.0,
+        "ppm": 0.0,
+        "locked": False,
+        "phase": phase,
+        "rate": word,
+        "stream_rate": stream,
+        "scope": "airplay" if phase == "airplay" else "idle",
+        "warming": False,
+    }
 
 
 AIRPLAY = AirPlay(
