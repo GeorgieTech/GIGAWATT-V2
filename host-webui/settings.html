@@ -26,20 +26,13 @@
     </div>
   </header>
   <main class="page">
-    <section class="card rack-card">
+    <section class="card">
       <div class="section-head">
-        <h2>On the LAN</h2>
-        <span class="badge" id="lan-badge">Listening</span>
+        <h2>This host</h2>
+        <span class="badge" id="host-badge">Ready</span>
       </div>
-      <p class="hint">Each chassis keeps its own Savant UID. <strong>Live</strong> means we hear it on 192.168.1.0/24. <strong>Linked</strong> merges both libraries so you can play a remote track on <em>this</em> jack (copy-then-play). <strong>Unlink</strong> splits the catalogs again: this jack only lists files that live here, and copies pulled from that host are removed. Hosts do not play together.</p>
-      <div class="mesh-wrap" aria-hidden="true">
-        <svg id="mesh" viewBox="0 0 320 148" preserveAspectRatio="xMidYMid meet"></svg>
-      </div>
-      <div class="rack-stats" id="rack-stats"></div>
-      <div class="rack" id="rack"></div>
-      <div class="row">
-        <button type="button" class="primary" id="btn-scan">Scan again</button>
-      </div>
+      <p class="hint">This chassis is a single TOSLINK player. There is no cluster, linked library, or group play.</p>
+      <p class="meta" id="host-meta"></p>
       <div class="err" id="err"></div>
       <div class="okline" id="ok"></div>
     </section>
@@ -152,212 +145,22 @@ function esc(s) {
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
-function stamp(uid, fallback) {
-  const s = String(uid || fallback || "");
-  const hex = s.replace(/[^0-9a-fA-F]/g, "").toUpperCase();
-  const core = hex.replace(/0+$/, "") || hex;
-  if (core.length >= 4) return core.slice(-4);
-  return (hex.slice(-4) || s.slice(-4) || "HOST").toUpperCase();
-}
-function commLine(h) {
-  if (h.self) return "This chassis";
-  const bits = [];
-  if (h.linked && h.online) bits.push("Shelf path");
-  else if (h.linked) bits.push("Linked · silent");
-  else if (h.online) bits.push("Heard on the LAN");
-  else bits.push("Remembered");
-  if (h.online && h.sees_us) bits.push("they see us");
-  if (h.online && h.rtt_ms != null) bits.push(h.rtt_ms + " ms");
-  if (h.playing) bits.push("playing");
-  if (h.error && !h.online) bits.push(h.error);
-  return bits.join(" · ");
-}
-function place(hosts) {
-  const w = 320, h = 148;
-  const self = hosts.find((x) => x.self) || hosts[0];
-  const others = hosts.filter((x) => !x.self);
-  const pts = [];
-  pts.push({ h: self, x: w / 2, y: h - 28 });
-  const n = others.length;
-  others.forEach((row, i) => {
-    const t = n === 1 ? 0.5 : i / Math.max(1, n - 1);
-    const x = 36 + t * (w - 72);
-    const y = 36 + Math.sin(t * Math.PI) * 18;
-    pts.push({ h: row, x, y });
-  });
-  return pts;
-}
-function paintMesh(hosts) {
-  const svg = $("mesh");
-  const pts = place(hosts);
-  const self = pts.find((p) => p.h && p.h.self) || pts[0];
-  let lines = "";
-  pts.forEach((p) => {
-    if (!p.h || p.h.self || !self) return;
-    let cls = "mesh-idle";
-    if (p.h.linked && p.h.online) cls = "mesh-link";
-    else if (p.h.linked) cls = "mesh-lost";
-    else if (p.h.online) cls = "mesh-heard";
-    lines += '<line class="' + cls + '" x1="' + self.x + '" y1="' + self.y + '" x2="' + p.x + '" y2="' + p.y + '"/>';
-  });
-  let nodes = "";
-  pts.forEach((p) => {
-    if (!p.h) return;
-    const cls = p.h.self ? "mesh-self" : (p.h.online ? "mesh-on" : "mesh-off");
-    const label = stamp(p.h.uid, p.h.id);
-    nodes += '<g class="' + cls + '">';
-    nodes += '<circle cx="' + p.x + '" cy="' + p.y + '" r="' + (p.h.self ? 11 : 8) + '"/>';
-    if (p.h.linked && !p.h.self) {
-      nodes += '<circle class="mesh-ring" cx="' + p.x + '" cy="' + p.y + '" r="13"/>';
-    }
-    nodes += '<text x="' + p.x + '" y="' + (p.y + (p.h.self ? 26 : -14)) + '">' + esc(label) + "</text>";
-    nodes += "</g>";
-  });
-  svg.innerHTML = lines + nodes;
-}
-function blade(h) {
-  const el = document.createElement("article");
-  const state = h.self ? "self" : (h.online ? "live" : "dark");
-  el.className = "blade " + state + (h.linked ? " linked" : "");
-  const title = h.host || h.id || h.ip || "Gigawatt host";
-  const meta = [
-    h.ip || "",
-    h.model || "",
-    h.version ? ("V" + h.version) : "",
-    (h.tracks ? (h.tracks + " track" + (h.tracks === 1 ? "" : "s")) : ""),
-  ].filter(Boolean).join(" · ");
-  el.innerHTML =
-    '<div class="blade-screws" aria-hidden="true"><span></span><span></span></div>' +
-    '<div class="blade-stamp">' + esc(stamp(h.uid, h.id)) + "</div>" +
-    '<div class="blade-body">' +
-      '<div class="blade-name">' + esc(title) + "</div>" +
-      '<div class="blade-meta">' + esc(meta) + "</div>" +
-      '<div class="blade-comm">' + esc(commLine(h)) + "</div>" +
-    "</div>" +
-    '<div class="blade-lamps">' +
-      '<span class="lamp live ' + (h.online ? "on" : "") + '">Live</span>' +
-      '<span class="lamp link ' + (h.linked ? "on" : "") + '">' + (h.self ? "You" : "Link") + "</span>" +
-    "</div>";
-  if (!h.self) {
-    const actions = document.createElement("div");
-    actions.className = "blade-actions";
-    if (h.linked) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "ghost";
-      btn.textContent = "Unlink";
-      btn.onclick = () => unlinkHost(h);
-      actions.appendChild(btn);
-    } else if (h.url || h.ip) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "primary";
-      btn.textContent = "Link library";
-      btn.onclick = () => linkHost(h);
-      actions.appendChild(btn);
-    }
-    el.appendChild(actions);
-  }
-  return el;
-}
-
-function render(data) {
-  const hosts = data.hosts || [];
-  const online = data.online || 0;
-  const linked = data.linked || 0;
-  const me = data.self || {};
-  $("hostline").textContent = (me.uid || me.host || "Gigawatt") + (me.ip ? (" · " + me.ip) : "");
-  $("rack-stats").innerHTML =
-    '<span>' + online + " live</span>" +
-    '<span>' + linked + " linked</span>" +
-    '<span>' + hosts.length + " chassis</span>";
-  const badge = $("lan-badge");
-  badge.textContent = online > 1 ? "Mesh up" : "Listening";
-  badge.className = "badge " + (online > 1 ? "live" : "seen");
-  paintMesh(hosts);
-  const rack = $("rack");
-  rack.innerHTML = "";
-  hosts.forEach((h) => rack.appendChild(blade(h)));
-  if (!hosts.length) {
-    rack.innerHTML = '<p class="hint">No chassis in the roster yet.</p>';
-  }
-  const beacon = data.beacon || {};
-  const bits = [];
-  if (beacon.igmp_error) {
-    bits.push("IGMP join failed: " + beacon.igmp_error);
-  }
-  if (data.error) bits.push(data.error);
-  else if (beacon.error) bits.push("Beacon: " + beacon.error);
-  $("err").textContent = bits.join(" · ");
-}
-async function loadFleet(probe) {
-  if (busy) return;
+async function paintHost() {
   try {
-    const url = probe ? "/api/fleet?probe=1" : "/api/fleet";
-    const data = await (await fetch(url)).json();
-    render(data);
-    return data;
+    const st = await (await fetch("/api/status")).json();
+    const bits = [];
+    if (st.host) bits.push(st.host);
+    if (st.uid) bits.push("UID " + st.uid);
+    if (st.ip) bits.push(st.ip);
+    if (st.version) bits.push("V" + st.version);
+    $("host-meta").textContent = bits.join(" · ");
+    $("hostline").textContent = (st.model || "SHC-S2") + " · TOSLINK";
+    $("host-badge").textContent = "Ready";
+    $("host-badge").className = "badge live";
   } catch (e) {
     $("err").textContent = "Host is not answering";
   }
 }
-async function api(body) {
-  const res = await fetch("/api/fleet", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body || {}),
-  });
-  return res.json();
-}
-async function scan() {
-  busy = true;
-  $("btn-scan").disabled = true;
-  $("ok").textContent = "Scanning the LAN…";
-  try {
-    const data = await api({ action: "scan" });
-    render(data);
-    $("ok").textContent = (data.online || 0) + " live · " + (data.linked || 0) + " linked";
-  } catch (e) {
-    $("err").textContent = "Scan failed";
-  } finally {
-    busy = false;
-    $("btn-scan").disabled = false;
-  }
-}
-async function linkHost(h) {
-  const url = h.url || ("http://" + h.ip);
-  if (!confirm("Link " + (h.host || h.uid || url) + " to share libraries? Files stay on that host. Play still happens on this jack.")) return;
-  busy = true;
-  try {
-    const data = await api({ action: "link", url: url });
-    render(data);
-    $("ok").textContent = data.ok ? ("Linked " + (h.uid || url)) : "";
-    $("err").textContent = data.ok ? "" : (data.error || "link failed");
-  } finally {
-    busy = false;
-  }
-}
-async function unlinkHost(h) {
-  if (!confirm("Unlink " + (h.host || h.uid) + "? This jack will only show its own library. Pair memory of that host is dumped here. Copies pulled from that host are removed. Files that live on that host are not deleted. It will not relink until you tap Link.")) return;
-  busy = true;
-  try {
-    const data = await api({
-      action: "unlink",
-      id: h.uid || h.id || h.url,
-      uid: h.uid || "",
-      url: h.url || "",
-    });
-    render(data);
-    let ok = "Unlinked — this library only";
-    if (data.ok && data.dropped) ok += " · " + data.dropped + " cop" + (data.dropped === 1 ? "y" : "ies") + " removed";
-    $("ok").textContent = data.ok ? ok : "";
-    $("err").textContent = data.ok ? "" : (data.error || "unlink failed");
-  } finally {
-    busy = false;
-  }
-}
-$("btn-scan").onclick = scan;
-
 async function loadPlayback() {
   try {
     const data = await (await fetch("/api/playback")).json();
@@ -485,10 +288,10 @@ $("wifi-join").onclick = async () => {
     $("err").textContent = "Host is not answering";
   }
 };
-loadFleet(true);
+paintHost();
 loadPlayback();
 loadWifi(true);
-setInterval(() => loadFleet(true), 4000);
+setInterval(paintHost, 8000);
 setInterval(loadPlayback, 4000);
 setInterval(() => loadWifi(false), 8000);
 

@@ -25,7 +25,7 @@ from library import CATALOG, PLAYLISTS, GENRES
 from wave import WAVES
 from lyrics import LYRICS
 from report import REPORTS
-from peers import PEERS, VERSION, identity
+from identity import VERSION, identity
 from cover import COVERS
 from airplay import AirPlay
 from playback import load_playback, save_playback
@@ -228,11 +228,7 @@ def _safe_filename(name):
 
 
 def _library(local_only=False):
-    local = CATALOG.tracks()
-    PEERS.note_local_catalog(local)
-    if local_only or not PEERS.config().get("shelves"):
-        return PEERS.tag_local(local)
-    return PEERS.merge(local)
+    return CATALOG.tracks()
 
 
 def _decorate_ready(tracks):
@@ -255,8 +251,6 @@ def _decorate_ready(tracks):
 def _library_payload(local_only=False, tracks=None):
     if tracks is None:
         tracks = _library(local_only=local_only)
-    peer = PEERS.snapshot()
-    peer["error"] = PEERS.error
     tracks = COVERS.decorate(tracks)
     tracks = _decorate_ready(tracks)
     return {
@@ -266,7 +260,7 @@ def _library_payload(local_only=False, tracks=None):
         "scanning": bool(CATALOG.scanning),
         "playlists": PLAYLISTS.list([t["name"] for t in tracks]),
         "genres": list(GENRES),
-        "peer": peer,
+        "peer": {"shelves": [], "error": ""},
     }
 
 
@@ -303,24 +297,6 @@ def _playback_cached():
 def _playback_invalidate():
     _PLAYBACK_CACHE["t"] = 0.0
     _PLAYBACK_CACHE["row"] = None
-
-
-def _hello_extra():
-    snap = APP.player.snapshot()
-    return {
-        "tracks": len(CATALOG.tracks()),
-        "playing": bool(snap.get("playing")),
-        "now": snap.get("name") or "",
-    }
-
-
-def _note_peer(handler):
-    try:
-        ip = handler.client_address[0] if handler.client_address else ""
-        ua = handler.headers.get("User-Agent") or ""
-        PEERS.note_client(ip, ua)
-    except Exception:
-        pass
 
 
 def _json_body(handler):
@@ -369,12 +345,9 @@ class CryptApp(object):
         self.requests = {}
         self.player = HostPlayer(on_end=self._on_end)
         self.player.set_eq(_load_eq())
-        PEERS.player = self.player
         self._status_refresh = 0.0
         self._lib_refresh_at = 0.0
         self._refresh_busy = False
-        PEERS.purge_unlinked_hot()
-        self.evict_unlinked()
         self.refresh()
 
     def refresh(self, local_only=False):
@@ -500,8 +473,7 @@ class CryptApp(object):
             "eq": eq,
             "eq_preset": _match_preset(eq),
             "disk": _disk(),
-            "peer": PEERS.snapshot(),
-            "fleet": PEERS.summary(),
+            "peer": {"shelves": [], "error": ""},
             "cover": COVERS.snapshot(
                 playing_name,
                 artist=cover_artist,
@@ -631,22 +603,7 @@ class CryptApp(object):
     def _ensure_local(self, name):
         rel = (name or "").replace("\\", "/").lstrip("/")
         full = os.path.join(MUSIC_DIR, rel)
-        if rel and os.path.isfile(full):
-            return True
-        owner = ""
-        with self.lock:
-            for t in self.tracks:
-                if t.get("name") == rel:
-                    owner = t.get("owner") or ""
-                    break
-        if not PEERS.config().get("shelves"):
-            return os.path.isfile(full)
-        ok = PEERS.ensure(rel, owner=owner)
-        if ok:
-            self.refresh()
-        else:
-            self.player.error = "could not copy from shelf"
-        return ok
+        return bool(rel) and os.path.isfile(full)
 
     def set_output(self, output):
         if output not in ("jack", "browser"):
@@ -818,7 +775,6 @@ class CryptApp(object):
         WAVES.drop_name(rel)
         LYRICS.drop_name(rel)
         REPORTS.drop_name(rel)
-        PEERS.drop_hot(rel)
         try:
             os.remove(full)
         except OSError:
@@ -830,16 +786,6 @@ class CryptApp(object):
         if refresh:
             self.refresh()
         return True
-
-    def evict_unlinked(self):
-        """After unlink: drop copies pulled from that shelf. Keep home files."""
-        names = PEERS.take_pending_evict()
-        dropped = 0
-        for name in names:
-            if self.delete_name(name, refresh=False):
-                dropped += 1
-        self.refresh(local_only=True)
-        return dropped
 
     def delete_names(self, names):
         if not isinstance(names, list):
@@ -930,8 +876,6 @@ class Handler(BaseHTTPRequestHandler):
         raw_path = self.path.split("?", 1)[0]
         qs = self.path.split("?", 1)[1] if "?" in self.path else ""
         try:
-            if raw_path.startswith("/api/"):
-                _note_peer(self)
             if raw_path in REDIRECTS:
                 self._redirect(REDIRECTS[raw_path])
                 return
@@ -973,19 +917,6 @@ class Handler(BaseHTTPRequestHandler):
                 _LIB_PAYLOAD["t"] = now
                 _LIB_PAYLOAD[key] = payload
                 self._send(200, payload)
-                return
-            if raw_path == "/api/peers":
-                snap = PEERS.snapshot()
-                snap["ok"] = True
-                snap["error"] = PEERS.error
-                self._send(200, snap)
-                return
-            if raw_path == "/api/hello":
-                self._send(200, PEERS.hello(_hello_extra()))
-                return
-            if raw_path == "/api/fleet":
-                probe = _qparam(qs, "probe") in ("1", "true", "yes")
-                self._send(200, PEERS.fleet(probe=probe, extra=_hello_extra()))
                 return
             if raw_path in ("/api/playback", "/api/airplay"):
                 pb = _playback_cached()
@@ -1242,39 +1173,6 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 self._send(200, payload)
                 return
-            if path == "/api/fleet":
-                _note_peer(self)
-                action = str(body.get("action") or "").strip().lower()
-                if action in ("scan", "refresh", ""):
-                    self._send(200, PEERS.fleet(probe=True, extra=_hello_extra(), force=True))
-                    return
-                if action == "link":
-                    notify = True if "notify" not in body else bool(body.get("notify"))
-                    ok, err = PEERS.link(body.get("url") or body.get("ip") or "", notify=notify)
-                    if ok:
-                        APP.refresh()
-                    payload = PEERS.fleet(probe=True, extra=_hello_extra())
-                    payload["ok"] = ok
-                    payload["error"] = err
-                    self._send(200 if ok else 400, payload)
-                    return
-                if action == "unlink":
-                    notify = True if "notify" not in body else bool(body.get("notify"))
-                    ok, err = PEERS.unlink(
-                        body.get("id") or body.get("uid") or body.get("url") or "",
-                        notify=notify,
-                    )
-                    dropped = 0
-                    if ok:
-                        dropped = APP.evict_unlinked()
-                    payload = PEERS.fleet(probe=False, extra=_hello_extra())
-                    payload["ok"] = ok
-                    payload["error"] = err
-                    payload["dropped"] = dropped
-                    self._send(200 if ok else 400, payload)
-                    return
-                self._send(400, {"ok": False, "error": "need action scan/link/unlink"})
-                return
             self._send(404, {"error": "not found"})
         except Exception:
             traceback.print_exc()
@@ -1331,7 +1229,6 @@ class Handler(BaseHTTPRequestHandler):
                 pass
             self._send(400, {"ok": False, "error": str(exc)})
             return
-        PEERS.drop_hot(name)
         _bust_lib_cache()
         APP.refresh()
         # Same wave/cover/lyrics path used at play time — do not block the upload reply.
@@ -1339,12 +1236,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, {"ok": True, "name": name, "size": written, "prep": True})
 
 
-def _boot_fleet():
-    time.sleep(6)
-    try:
-        PEERS.fleet(probe=True, extra=_hello_extra())
-    except Exception:
-        traceback.print_exc()
+def _boot_airplay():
+    time.sleep(2)
     try:
         pb = load_playback()
         if AIRPLAY is not None and AIRPLAY.available() and pb.get("airplay"):
@@ -1355,8 +1248,7 @@ def _boot_fleet():
 
 def main():
     os.makedirs(MUSIC_DIR, exist_ok=True)
-    PEERS.start()
-    threading.Thread(target=_boot_fleet, daemon=True, name="boot-fleet").start()
+    threading.Thread(target=_boot_airplay, daemon=True, name="boot-airplay").start()
     httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     me = identity()
     print("Gigawatt %s listening on :%s music=%s id=%s uid=%s ip=%s" % (
@@ -1366,7 +1258,6 @@ def main():
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
-    PEERS.stop()
     httpd.server_close()
 
 

@@ -1,6 +1,6 @@
 # Host hardware — 192.168.1.142 (master music server)
 
-Factory product: **Savant SHC-S2-00** (SHC-2000 class Quad). This is the live Gigawatt host. A later SHC-2000 will **Link library** the same way; that feature is unchanged.
+Factory product: **Savant SHC-S2-00** (SHC-2000 class Quad). This is the live Gigawatt host. There is no cluster or linked library.
 
 Do **not** use **192.168.1.40**, **192.168.1.178**, **192.168.1.179**, or **192.168.1.180**. Do not `dd` a DualLite S2 eMMC onto this chassis. DualLite `.179` is retired from this lab.
 
@@ -24,7 +24,7 @@ Do **not** use **192.168.1.40**, **192.168.1.178**, **192.168.1.179**, or **192.
 - Audio: Pulse sink `alsa_output.platform-sound-spdif.stereo-fallback` (TOSLINK / `imx-spdif`)
 - Python 3.8.17 stdlib, ffmpeg 4.2.2, paplay / Pulse 13
 
-Converted 2026-09-09: Savant `startupManager` + `nginx` masked, default `multi-user.target`, `crypt-hostname` / `crypt-pulse` / `crypt-web` enabled. This jack’s library is the files on **this** disk (`/data/music`). Caches stay under `/data/crypt`. When a second host is linked, play still copies onto this box first.
+Converted 2026-09-09: Savant `startupManager` + `nginx` masked, default `multi-user.target`, `crypt-hostname` / `crypt-pulse` / `crypt-web` enabled. This jack’s library is the files on **this** disk (`/data/music`). Caches stay under `/data/crypt`.
 
 Live UI: [http://192.168.1.142/](http://192.168.1.142/)
 
