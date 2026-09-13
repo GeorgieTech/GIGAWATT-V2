@@ -14,10 +14,11 @@ META_PIPE = "/tmp/gigawatt-airplay.meta"
 NAME_RE = re.compile(r"^[A-Za-z0-9._ -]{1,50}$")
 DEFAULT_NAME = "Gigawatt"
 
-# Same stuffing as Gigawatt Beta2 (worked). V2 auto/soxr + 0.5 s buffer skipped on TOSLINK.
-# Switch TOSLINK to 44.1 *before* audio (Beta2 never locked the jack at 96 kHz).
+# Same stuffing as Gigawatt Beta2 (worked). Do not open imx-spdif at 44.1 —
+# that rate reports RUNNING with 0 µs latency and the optical jack is silent.
+# Pulse default 48 kHz (Beta2 library rate) resamples AirPlay 44.1 → 48.
 CONF_TEMPLATE = """general = {
-  name = "%(name)s";
+  name = "%s";
   interpolation = "basic";
   output_backend = "pa";
   ignore_volume_control = "no";
@@ -26,14 +27,11 @@ CONF_TEMPLATE = """general = {
 sessioncontrol = {
   allow_session_interruption = "yes";
   session_timeout = 120;
-  wait_for_completion = "yes";
-  run_this_before_play_begins = "%(begin)s";
-  run_this_after_play_ends = "%(end)s";
 };
 metadata = {
   enabled = "yes";
   include_cover_art = "no";
-  pipe_name = "%(pipe)s";
+  pipe_name = "%s";
   pipe_timeout = 5000;
 };
 pa = {
@@ -134,7 +132,8 @@ def _pulse_env():
     return env
 
 
-AIRPLAY_RATES = (44100, 48000)
+# imx-spdif on this S2 plays 48 kHz and 96 kHz. 44.1 opens and stays at 0 µs.
+AIRPLAY_RATE = 48000
 LOCAL_RATE = 96000
 _SINK = "@DEFAULT_SINK@"
 
@@ -209,8 +208,10 @@ def _kick_silence(rate, msec=80):
 
 
 def set_spdif_rate(rate):
-    """Open TOSLINK at `rate` so AirPlay is not resampled 44.1 → 96 kHz."""
+    """Reopen TOSLINK at 48 kHz or 96 kHz. Never 44.1 — that rate is silent."""
     want = int(rate or 0)
+    if want == 44100:
+        want = AIRPLAY_RATE
     if want < 8000:
         return 0
     got = current_spdif_rate()
@@ -358,24 +359,11 @@ class AirPlay(object):
 
     def _write_conf(self):
         path = os.path.join(self.directory, "shairport-sync.conf")
-        begin = os.path.join(self.directory, "toslink-airplay-begin.sh")
-        end = os.path.join(self.directory, "toslink-airplay-end.sh")
-        name = self.name.replace("\\", "").replace("\"", "")
-        body = CONF_TEMPLATE % {
-            "name": name,
-            "begin": begin.replace("\\", "/").replace("\"", ""),
-            "end": end.replace("\\", "/").replace("\"", ""),
-            "pipe": META_PIPE,
-        }
+        body = CONF_TEMPLATE % (self.name.replace("\\", "").replace("\"", ""), META_PIPE)
         tmp = path + ".tmp"
         with open(tmp, "w") as fh:
             fh.write(body)
         os.replace(tmp, path)
-        for script in (begin, end):
-            try:
-                os.chmod(script, 0o755)
-            except Exception:
-                pass
 
     def set_enabled(self, value):
         want = bool(value)
@@ -386,7 +374,6 @@ class AirPlay(object):
                 self._ensure_keeper_locked()
                 return ok
             self._stop_locked()
-            self._restore_toslink()
             self.error = ""
             return True
 
@@ -468,14 +455,11 @@ class AirPlay(object):
     def _stop_locked(self):
         proc = self.proc
         self.proc = None
-        was = self.active
         self.active = False
         self.title = ""
         self.artist = ""
         self.album = ""
         self.client = ""
-        if was:
-            self._restore_toslink()
         if proc is None:
             return
         try:
@@ -486,12 +470,6 @@ class AirPlay(object):
                 proc.kill()
             except Exception:
                 pass
-
-    def _restore_toslink(self):
-        """Library paplay needs 96 kHz. The before-play hook already left 44.1."""
-        if current_spdif_rate() == LOCAL_RATE:
-            return
-        set_spdif_rate(LOCAL_RATE)
 
     def _pulse_watch(self):
         while True:

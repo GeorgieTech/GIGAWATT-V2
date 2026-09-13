@@ -23,31 +23,18 @@ class RateParseTests(unittest.TestCase):
 
 class ConfTests(unittest.TestCase):
     def test_stuffing_matches_beta2(self):
-        conf = airplay.CONF_TEMPLATE % {
-            "name": "Gigawatt 39DB",
-            "begin": "/data/opt/airplay/toslink-airplay-begin.sh",
-            "end": "/data/opt/airplay/toslink-airplay-end.sh",
-            "pipe": "/tmp/gigawatt-airplay.meta",
-        }
+        conf = airplay.CONF_TEMPLATE % ("Gigawatt 39DB", "/tmp/gigawatt-airplay.meta")
         self.assertIn('interpolation = "basic"', conf)
         self.assertNotIn('interpolation = "auto"', conf)
         self.assertNotIn("audio_backend_buffer_desired_length_in_seconds", conf)
         self.assertIn('ignore_volume_control = "no"', conf)
-        self.assertIn('wait_for_completion = "yes"', conf)
-        self.assertIn("toslink-airplay-begin.sh", conf)
-        self.assertIn("toslink-airplay-end.sh", conf)
+        self.assertNotIn("wait_for_completion", conf)
+        self.assertNotIn("run_this_before_play_begins", conf)
+        self.assertNotIn("44100", conf)
 
-    def test_rate_hooks_live_next_to_binary(self):
-        folder = os.path.join(os.path.dirname(airplay.__file__), "airplay")
-        begin = os.path.join(folder, "toslink-airplay-begin.sh")
-        end = os.path.join(folder, "toslink-airplay-end.sh")
-        self.assertTrue(os.path.isfile(begin), begin)
-        self.assertTrue(os.path.isfile(end), end)
-        with open(begin) as fh:
-            body = fh.read()
-        self.assertIn("44100", body)
-        with open(os.path.join(folder, "shairport-sync.conf")) as fh:
-            self.assertIn("wait_for_completion", fh.read())
+    def test_never_targets_silent_44k1(self):
+        self.assertEqual(airplay.AIRPLAY_RATE, 48000)
+        self.assertNotEqual(airplay.AIRPLAY_RATE, 44100)
 
 
 class NameTests(unittest.TestCase):

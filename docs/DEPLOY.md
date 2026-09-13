@@ -1,4 +1,4 @@
-# Deploy notes — Gigawatt V2.2.26
+# Deploy notes — Gigawatt V2.2.27
 
 Live target: **192.168.1.142** (SHC-S2-00 Quad). Never 192.168.1.40 / .178 / .179 / .180.
 
@@ -11,7 +11,7 @@ SSH user: `RPM`. Do not commit the password. `scp -O` from modern macOS.
 ```sh
 git clone https://github.com/GeorgieTech/GIGAWATT-V2.git
 cd GIGAWATT-V2
-git checkout v2.2.26
+git checkout v2.2.27
 chmod +x scripts/push-host.sh host-webui/install-on-host.sh
 scripts/push-host.sh 192.168.1.142
 ```
@@ -22,7 +22,7 @@ Confirm:
 curl -s http://192.168.1.142/api/status | python3 -c "import json,sys; print(json.load(sys.stdin).get('version'))"
 ```
 
-It must print `2.2.26`. AirPlay binaries land in `/data/opt/airplay`. TOSLINK switches to 44.1 kHz *before* AirPlay audio (Beta2 stuffing, no mid-stream suspend).
+It must print `2.2.27`. AirPlay binaries land in `/data/opt/airplay`. Pulse default is 48 kHz (Beta2). Do not open TOSLINK at 44.1 kHz — that rate is silent on this jack.
 
 ## First-time unit (once per chassis)
 

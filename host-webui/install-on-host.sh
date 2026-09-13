@@ -11,7 +11,6 @@ rm -f /data/www/unison.py /data/www/peers.py /data/www/crypt_wire.py
 chmod +x /data/www/pin-hostname.sh /data/www/server.py /data/www/player.py
 APSRC=""
 # scp -r into an existing /tmp/gigawatt-airplay nests as .../airplay/.
-# Prefer the copy that includes the TOSLINK rate hooks.
 for cand in \
   /tmp/gigawatt-airplay/airplay \
   /tmp/gigawatt-airplay \
@@ -19,17 +18,15 @@ for cand in \
 do
   if [ -x "$cand/shairport-sync" ]; then
     APSRC=$cand
-    if [ -f "$cand/toslink-airplay-begin.sh" ]; then
-      break
-    fi
+    break
   fi
 done
 if [ -n "$APSRC" ]; then
   rm -rf /data/opt/airplay
   mkdir -p /data/opt
   cp -a "$APSRC" /data/opt/airplay
-  chmod +x /data/opt/airplay/run-shairport /data/opt/airplay/shairport-sync \
-    /data/opt/airplay/toslink-airplay-begin.sh /data/opt/airplay/toslink-airplay-end.sh || true
+  chmod +x /data/opt/airplay/run-shairport /data/opt/airplay/shairport-sync || true
+  rm -f /data/opt/airplay/toslink-airplay-begin.sh /data/opt/airplay/toslink-airplay-end.sh
   chown -R RPM:RPM /data/opt/airplay
 fi
 chown -R RPM:RPM /data/www /data/music /data/crypt
@@ -40,10 +37,12 @@ if [ -f /etc/pulse/daemon.conf ]; then
   cat >> /etc/pulse/daemon.conf << 'EOF'
 
 # GIGAWATT-AUDIO
+# 48 kHz default matches Gigawatt Beta2 (this jack is silent at 44.1).
+# Library paplay is 96 kHz and uses the alternate rate for Host Time Clock.
 resample-method = speex-float-1
 avoid-resampling = yes
-default-sample-rate = 96000
-alternate-sample-rate = 44100
+default-sample-rate = 48000
+alternate-sample-rate = 96000
 default-fragments = 8
 default-fragment-size-msec = 50
 high-priority = yes
