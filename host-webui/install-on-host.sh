@@ -10,13 +10,20 @@ cp /tmp/VERSION /tmp/index.html /tmp/library.html /tmp/eq.html /tmp/karaoke.html
 rm -f /data/www/unison.py /data/www/peers.py /data/www/crypt_wire.py
 chmod +x /data/www/pin-hostname.sh /data/www/server.py /data/www/player.py
 APSRC=""
-if [ -x /tmp/gigawatt-airplay/shairport-sync ]; then
-  APSRC=/tmp/gigawatt-airplay
-elif [ -x /tmp/gigawatt-airplay/airplay/shairport-sync ]; then
-  APSRC=/tmp/gigawatt-airplay/airplay
-elif [ -x /tmp/airplay/shairport-sync ]; then
-  APSRC=/tmp/airplay
-fi
+# scp -r into an existing /tmp/gigawatt-airplay nests as .../airplay/.
+# Prefer the copy that includes the TOSLINK rate hooks.
+for cand in \
+  /tmp/gigawatt-airplay/airplay \
+  /tmp/gigawatt-airplay \
+  /tmp/airplay
+do
+  if [ -x "$cand/shairport-sync" ]; then
+    APSRC=$cand
+    if [ -f "$cand/toslink-airplay-begin.sh" ]; then
+      break
+    fi
+  fi
+done
 if [ -n "$APSRC" ]; then
   rm -rf /data/opt/airplay
   mkdir -p /data/opt

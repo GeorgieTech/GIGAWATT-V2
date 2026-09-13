@@ -35,6 +35,7 @@ SSH=(ssh -o IPQoS=none -o ConnectTimeout=30)
 SCP=(scp -O -o IPQoS=none -o ConnectTimeout=30)
 echo "push $(cat "$UI/VERSION") -> RPM@$HOST"
 "${SCP[@]}" "${FILES[@]}" "RPM@$HOST:/tmp/"
+"${SSH[@]}" "RPM@$HOST" rm -rf /tmp/gigawatt-airplay
 "${SCP[@]}" -r "$UI/airplay" "RPM@$HOST:/tmp/gigawatt-airplay"
 "${SSH[@]}" "RPM@$HOST" sudo env bash /tmp/install-on-host.sh
 "${SSH[@]}" "RPM@$HOST" cat /data/www/VERSION
