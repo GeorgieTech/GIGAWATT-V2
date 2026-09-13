@@ -53,7 +53,7 @@ def sanitize_name(name):
 
 def default_name():
     try:
-        from peers import identity, stamp
+        from identity import identity, stamp
         me = identity()
         tag = stamp(me.get("uid") or me.get("id") or "")
         if tag:

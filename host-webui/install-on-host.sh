@@ -4,10 +4,10 @@
 set -e
 mkdir -p /data/www /data/music /data/crypt
 cp /tmp/VERSION /tmp/index.html /tmp/library.html /tmp/eq.html /tmp/karaoke.html /tmp/report.html /tmp/settings.html /tmp/crypt.css \
-  /tmp/server.py /tmp/player.py /tmp/library.py /tmp/wave.py /tmp/lyrics.py /tmp/research.py /tmp/report.py /tmp/essay.py /tmp/peers.py /tmp/crypt_wire.py \
+  /tmp/server.py /tmp/player.py /tmp/library.py /tmp/wave.py /tmp/lyrics.py /tmp/research.py /tmp/report.py /tmp/essay.py /tmp/identity.py \
   /tmp/airplay.py /tmp/playback.py /tmp/cover.py /tmp/wifi.py /tmp/queueing.py /tmp/gigawatt-pulse.pa \
   /tmp/pin-hostname.sh /tmp/manifest.webmanifest /tmp/favicon.svg /tmp/icon.png /tmp/apple-touch-icon.png /data/www/
-rm -f /data/www/unison.py
+rm -f /data/www/unison.py /data/www/peers.py /data/www/crypt_wire.py
 chmod +x /data/www/pin-hostname.sh /data/www/server.py /data/www/player.py
 APSRC=""
 if [ -x /tmp/gigawatt-airplay/shairport-sync ]; then
@@ -102,7 +102,9 @@ systemctl is-active crypt-web.service || true
 systemctl is-active crypt-pulse.service || true
 systemctl is-active crypt-hostname.service || true
 hostname
-python3 -c "import sys; sys.path.insert(0, '/data/www'); import peers; print('version', peers.VERSION)"
-test ! -e /data/www/unison.py
+python3 -c "import sys; sys.path.insert(0, '/data/www'); import identity; print('version', identity.VERSION)"
+rm -f /data/www/peers.py /data/www/crypt_wire.py /data/www/unison.py
+rm -f /data/crypt/peers.json /data/crypt/seen.json /data/crypt/hot.json
+test ! -e /data/www/peers.py
 ss -tln | grep -E ':80|:443' || true
 systemctl status crypt-web.service --no-pager -l | head -20 || true

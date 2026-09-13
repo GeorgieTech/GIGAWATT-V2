@@ -619,7 +619,7 @@ function render() {
     if (!list.length) {
       ul.appendChild(tracks().length
         ? emptyState("No artists match", "Try a different search.")
-        : emptyState("No music yet", "Drop files above, or wait for a linked shelf to share its catalog."));
+        : emptyState("No music yet", "Drop files above."));
     }
   } else if ((view === "artists" && artist && !album) || (view === "albums" && !album)) {
     const list = albums(view === "artists" ? artist : "");
@@ -728,7 +728,7 @@ function render() {
       actions.appendChild(play);
     }
     list.forEach((t) => ul.appendChild(rowTrack(t, { order: list })));
-    if (!tracks().length) ul.appendChild(emptyState("Library is empty", "Drop files above, or wait for a linked shelf to share its catalog."));
+    if (!tracks().length) ul.appendChild(emptyState("Library is empty", "Drop files above."));
     else if (!list.length) ul.appendChild(emptyState("No tracks match", "Try a different search, artist, or album."));
   }
 }
