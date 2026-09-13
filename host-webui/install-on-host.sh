@@ -21,7 +21,8 @@ if [ -n "$APSRC" ]; then
   rm -rf /data/opt/airplay
   mkdir -p /data/opt
   cp -a "$APSRC" /data/opt/airplay
-  chmod +x /data/opt/airplay/run-shairport /data/opt/airplay/shairport-sync || true
+  chmod +x /data/opt/airplay/run-shairport /data/opt/airplay/shairport-sync \
+    /data/opt/airplay/toslink-airplay-begin.sh /data/opt/airplay/toslink-airplay-end.sh || true
   chown -R RPM:RPM /data/opt/airplay
 fi
 chown -R RPM:RPM /data/www /data/music /data/crypt

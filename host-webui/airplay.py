@@ -15,8 +15,9 @@ NAME_RE = re.compile(r"^[A-Za-z0-9._ -]{1,50}$")
 DEFAULT_NAME = "Gigawatt"
 
 # Same stuffing as Gigawatt Beta2 (worked). V2 auto/soxr + 0.5 s buffer skipped on TOSLINK.
+# Switch TOSLINK to 44.1 *before* audio (Beta2 never locked the jack at 96 kHz).
 CONF_TEMPLATE = """general = {
-  name = "%s";
+  name = "%(name)s";
   interpolation = "basic";
   output_backend = "pa";
   ignore_volume_control = "no";
@@ -25,11 +26,14 @@ CONF_TEMPLATE = """general = {
 sessioncontrol = {
   allow_session_interruption = "yes";
   session_timeout = 120;
+  wait_for_completion = "yes";
+  run_this_before_play_begins = "%(begin)s";
+  run_this_after_play_ends = "%(end)s";
 };
 metadata = {
   enabled = "yes";
   include_cover_art = "no";
-  pipe_name = "%s";
+  pipe_name = "%(pipe)s";
   pipe_timeout = 5000;
 };
 pa = {
@@ -295,7 +299,6 @@ class AirPlay(object):
         self.name = sanitize_name(name) or default_name()
         self._meta_fh = None
         self._keeper = False
-        self._jack_matched = False
         try:
             self._write_conf()
         except Exception:
@@ -355,11 +358,24 @@ class AirPlay(object):
 
     def _write_conf(self):
         path = os.path.join(self.directory, "shairport-sync.conf")
-        body = CONF_TEMPLATE % (self.name.replace("\\", "").replace("\"", ""), META_PIPE)
+        begin = os.path.join(self.directory, "toslink-airplay-begin.sh")
+        end = os.path.join(self.directory, "toslink-airplay-end.sh")
+        name = self.name.replace("\\", "").replace("\"", "")
+        body = CONF_TEMPLATE % {
+            "name": name,
+            "begin": begin.replace("\\", "/").replace("\"", ""),
+            "end": end.replace("\\", "/").replace("\"", ""),
+            "pipe": META_PIPE,
+        }
         tmp = path + ".tmp"
         with open(tmp, "w") as fh:
             fh.write(body)
         os.replace(tmp, path)
+        for script in (begin, end):
+            try:
+                os.chmod(script, 0o755)
+            except Exception:
+                pass
 
     def set_enabled(self, value):
         want = bool(value)
@@ -445,7 +461,6 @@ class AirPlay(object):
             return False
         self.error = ""
         self.active = False
-        self._jack_matched = False
         threading.Thread(target=self._meta_loop, daemon=True).start()
         threading.Thread(target=self._pulse_watch, daemon=True).start()
         return True
@@ -472,21 +487,11 @@ class AirPlay(object):
             except Exception:
                 pass
 
-    def _match_toslink(self):
-        """Run imx-spdif at AirPlay's rate (44.1 kHz, else 48 kHz)."""
-        if self._jack_matched:
-            return
-        for rate in AIRPLAY_RATES:
-            if set_spdif_rate(rate) == rate:
-                self._jack_matched = True
-                return
-        self._jack_matched = True
-
     def _restore_toslink(self):
-        if not self._jack_matched and current_spdif_rate() == LOCAL_RATE:
+        """Library paplay needs 96 kHz. The before-play hook already left 44.1."""
+        if current_spdif_rate() == LOCAL_RATE:
             return
         set_spdif_rate(LOCAL_RATE)
-        self._jack_matched = False
 
     def _pulse_watch(self):
         while True:
@@ -502,21 +507,15 @@ class AirPlay(object):
                     if not self.active:
                         self.active = True
                         begin = True
-                if begin:
-                    if self.on_begin:
-                        try:
-                            self.on_begin()
-                        except Exception:
-                            pass
-                    self._match_toslink()
+                if begin and self.on_begin:
+                    try:
+                        self.on_begin()
+                    except Exception:
+                        pass
             elif not flowing and known_active:
-                end = False
                 with self.lock:
                     if not self.title:
                         self.active = False
-                        end = True
-                if end:
-                    self._restore_toslink()
             time.sleep(1.0)
 
     def _meta_loop(self):
@@ -554,7 +553,6 @@ class AirPlay(object):
 
     def _apply(self, key, text):
         begin = False
-        end = False
         with self.lock:
             was = self.active
             if key == "ssnc.pbeg":
@@ -581,14 +579,8 @@ class AirPlay(object):
                     self.client = text
             if self.active and not was:
                 begin = True
-            if was and not self.active:
-                end = True
-        if begin:
-            if self.on_begin:
-                try:
-                    self.on_begin()
-                except Exception:
-                    pass
-            self._match_toslink()
-        if end:
-            self._restore_toslink()
+        if begin and self.on_begin:
+            try:
+                self.on_begin()
+            except Exception:
+                pass

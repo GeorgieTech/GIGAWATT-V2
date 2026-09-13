@@ -1,10 +1,10 @@
-# Gigawatt V2.2.25
+# Gigawatt V2.2.26
 
 Repo: [`GIGAWATT-V2`](https://github.com/GeorgieTech/GIGAWATT-V2)
 
 A local TOSLINK music player on a recycled Savant S2 host (SHC-S2-00 Quad). Library on this disk, web UI on port 80, optical out.
 
-**Current release: [V2.2.25](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.25)** (`v2.2.25`). Previous: [V2.2.24](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.24) · [V2.2.23](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.23).
+**Current release: [V2.2.26](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.26)** (`v2.2.26`). Previous: [V2.2.25](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.25) · [V2.2.24](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.24).
 
 This project is **not affiliated with Savant Systems**.
 
