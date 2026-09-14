@@ -396,10 +396,9 @@ async function tick() {
     const apOn = !!(st.airplay || {}).active;
     const playing = !!p.playing && !apOn;
     const paused = !!p.paused && !apOn;
-    const ck = p.clock || {};
     playClock = {
       at: performance.now(),
-      heard: (ck.heard != null ? ck.heard : p.position) || 0,
+      heard: p.position || 0,
       playing: playing,
       duration: p.duration || 0,
       name: p.name || ""
@@ -452,9 +451,8 @@ setInterval(async () => {
   try {
     const st = await (await fetch("/api/clock")).json();
     const p = st.player || {};
-    const ck = p.clock || {};
     playClock.at = performance.now();
-    playClock.heard = (ck.heard != null ? ck.heard : p.position) || 0;
+    playClock.heard = p.position || 0;
     playClock.playing = !!p.playing;
     playClock.duration = p.duration || playClock.duration;
   } catch (e) {}

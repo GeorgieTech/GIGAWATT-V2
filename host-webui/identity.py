@@ -6,7 +6,7 @@ import os
 import socket
 import time
 
-VERSION = "2.2.29"
+VERSION = "2.2.30"
 LAN_PREFIX = "192.168.1."
 BLOCKED = ("192.168.1.40", "192.168.1.178", "192.168.1.179", "192.168.1.180")
 

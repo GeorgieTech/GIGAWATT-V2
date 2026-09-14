@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.2.29</div>
+      <div class="sub">S2 · V2.2.30</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -78,63 +78,6 @@
       <div class="wave-over-wrap" id="seek">
         <canvas id="wover" aria-label="Track overview"></canvas>
       </div>
-      <details class="clock-pro" id="clockpro">
-        <summary>Time Clock / Pro</summary>
-        <div class="clock-stats" id="clockstats">
-          <div class="clock-hero">
-            <div class="clk-delta" id="clk-off">—</div>
-            <div class="clk-delta-l" id="clk-off-l">Time Clock vs playback</div>
-          </div>
-          <div class="clock-times">
-            <div class="clock-col heard">
-              <span class="k">Time Clock</span>
-              <span class="v" id="clk-heard">0:00.000</span>
-              <span class="clk-sub">what you hear</span>
-            </div>
-            <div class="clock-col play">
-              <span class="k">Playback</span>
-              <span class="v" id="clk-play">0:00.000</span>
-              <span class="clk-sub">decoder</span>
-            </div>
-          </div>
-          <div class="clock-lane" id="clk-lane" aria-hidden="true">
-            <div class="clock-lane-span" id="clk-span"></div>
-            <div class="clock-mark heard" id="clk-mark-h"></div>
-            <div class="clock-mark play" id="clk-mark-p"></div>
-          </div>
-          <div class="clock-legend">
-            <span class="heard">Time Clock</span>
-            <span class="play">Playback</span>
-            <span id="clk-lock">idle</span>
-          </div>
-          <div class="clock-meter">
-            <div>
-              <span class="k">Word clock</span>
-              <span class="v" id="clk-rate">48.000 kHz</span>
-            </div>
-            <div>
-              <span class="k">Jitter</span>
-              <span class="v" id="clk-jit">—</span>
-            </div>
-            <div>
-              <span class="k">Steer</span>
-              <span class="v" id="clk-ppm">—</span>
-            </div>
-          </div>
-          <p class="clock-note" id="clk-note">Host Time Clock vs decoder timing</p>
-        </div>
-        <div class="wave-legend">
-          <span class="lo">Lows</span>
-          <span class="mid">Mids</span>
-          <span class="hi">Highs</span>
-          <span class="beats" id="wave-bpm">— BPM</span>
-          <span class="zoom-tools">
-            <button type="button" class="ghost zoom-btn" id="zoom-in" aria-label="Zoom in">+</button>
-            <span id="zoom-sec">10s</span>
-            <button type="button" class="ghost zoom-btn" id="zoom-out" aria-label="Zoom out">−</button>
-          </span>
-        </div>
-      </details>
       <div class="err" id="err"></div>
     </section>
     <section class="card queue-card">
@@ -432,13 +375,6 @@ if ($("prevbtn")) $("prevbtn").onclick = goPrev;
 if ($("nextbtn")) $("nextbtn").onclick = goNext;
 if ($("stopbtn")) $("stopbtn").onclick = goStop;
 if ($("playbtn")) $("playbtn").onclick = toggle;
-const clockPro = $("clockpro");
-if (clockPro) {
-  clockPro.addEventListener("toggle", () => {
-    document.body.classList.toggle("pro-open", clockPro.open);
-    sizeViz();
-  });
-}
 let volUser = false;
 let volPending = null;
 let volBusy = false;
@@ -1397,21 +1333,16 @@ async function tick() {
       if (ap.active) artistEl.textContent = ap.artist || ap.client || "AirPlay";
       else artistEl.textContent = p.name ? (row.artist || "Unknown artist") : "Pick a track in Library";
     }
-    const ck = p.clock || {};
-    let heard = (ck.heard != null ? ck.heard : p.position) || 0;
-    let playback = (ck.playback != null ? ck.playback : p.playback) || heard;
+    let heard = p.position || 0;
     if (output === "browser" && tap.audio && p.name) {
       heard = tap.audio.currentTime || heard;
-      playback = heard;
     }
     if (apOn) {
       $("meta").textContent = "AirPlay";
-      applyClockSample({ phase: "idle", locked: false, rate: 96000 }, { playing: false, name: "" }, true);
-      paintClockStats(0, 0, true);
+      applyClockSample({}, { playing: false, name: "" }, true);
     } else {
       $("meta").textContent = fmt(heard) + " / " + fmt(p.duration);
-      applyClockSample(ck, p, false);
-      paintClockStats(heard, playback, true);
+      applyClockSample({}, p, false);
     }
     loadWave(p.name || "");
     $("playbtn").classList.toggle("is-playing", playing);
@@ -1459,24 +1390,6 @@ ensureLib(true);
 tick();
 setInterval(tick, 1000);
 setInterval(() => ensureLib(false), 15000);
-let clockBusy = false;
-async function tickClock() {
-  if (document.hidden || clockBusy) return;
-  if ((last.airplay || {}).active) return;
-  clockBusy = true;
-  try {
-    const st = await (await fetch("/api/clock")).json();
-    const p = st.player || {};
-    applyClockSample(p.clock || {}, p, false);
-    if (p.name) syncTap(p, !!p.playing);
-    // Keep Pro panel moving even if a paint frame was skipped.
-    if ($("clockpro") && $("clockpro").open) {
-      paintClockStats(nowClock("heard"), nowClock("playback"));
-    }
-  } catch (e) {}
-  clockBusy = false;
-}
-setInterval(tickClock, 250);
 </script>
 </body>
 </html>

@@ -19,7 +19,7 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 
-from player import HostPlayer, MUSIC_DIR, EQ_BANDS, EQ_PRESETS, EQ_Q, clamp_eq, eq_region, toslink_clock
+from player import HostPlayer, MUSIC_DIR, NAS_DIR, EQ_BANDS, EQ_PRESETS, EQ_Q, clamp_eq, eq_region
 from queueing import sanitize_requester, insert_play_next
 from library import CATALOG, PLAYLISTS, GENRES
 from wave import WAVES
@@ -30,12 +30,16 @@ from cover import COVERS
 from airplay import AirPlay
 from playback import load_playback, save_playback
 from wifi import Wifi
+import nas as nasmod
+from nas import NasShare, browse as nas_browse, NAS_BIN, rel_ok as nas_rel_ok
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("WEBUI_PORT", "80"))
 EQ_FILE = os.environ.get("EQ_FILE", "/data/crypt/eq.json")
 AIRPLAY_DIR = os.environ.get("AIRPLAY_DIR", "/data/opt/airplay")
+STATE_DIR = os.environ.get("CRYPT_STATE", "/data/crypt")
 AIRPLAY = None
+NAS = None
 WIFI = Wifi()
 
 
@@ -149,11 +153,12 @@ def _qparam(qs, key):
     return (parse_qs(qs, keep_blank_values=True).get(key) or [""])[0]
 
 
-def _media_path(name):
+def _media_path(name, origin="local"):
     rel = (name or "").replace("\\", "/").lstrip("/")
     if not rel or ".." in rel.split("/"):
         return None
-    base = os.path.realpath(MUSIC_DIR)
+    origin = "nas" if origin == "nas" else "local"
+    base = os.path.realpath(NAS_DIR if origin == "nas" else MUSIC_DIR)
     full = os.path.realpath(os.path.join(base, rel))
     if full == base or not full.startswith(base + os.sep):
         return None
@@ -348,6 +353,7 @@ class CryptApp(object):
         self._status_refresh = 0.0
         self._lib_refresh_at = 0.0
         self._refresh_busy = False
+        self._play_origin = "local"
         self.refresh()
 
     def refresh(self, local_only=False):
@@ -357,6 +363,8 @@ class CryptApp(object):
         tracks = _library(local_only=local_only)
         with self.lock:
             self.tracks = tracks
+            if self._play_origin == "nas":
+                return
             names = [t["name"] for t in self.tracks]
             name_set = set(names)
             self.order = [n for n in self.order if n in name_set]
@@ -435,12 +443,6 @@ class CryptApp(object):
             "available": False, "enabled": False, "active": False,
             "name": "", "title": "", "artist": "", "album": "", "client": "", "error": "",
         }
-        snap["clock"] = toslink_clock(
-            snap.get("clock"),
-            airplay_active=bool(ap.get("active")),
-            output=_playback_cached().get("output") or "jack",
-            source=snap.get("source") or "jack",
-        )
         with self.lock:
             tracks = list(self.tracks)
             order = list(self.order)
@@ -482,27 +484,23 @@ class CryptApp(object):
             ),
             "output": _playback_cached().get("output") or "jack",
             "airplay": ap,
+            "nas": NAS.snapshot() if NAS is not None else {
+                "available": False, "mounted": False, "enabled": False, "error": "",
+            },
         }
 
     def clock(self):
         snap = self.player.snapshot()
-        ap = AIRPLAY.snapshot() if AIRPLAY is not None else {}
-        ck = toslink_clock(
-            snap.get("clock"),
-            airplay_active=bool(ap.get("active")),
-            output=_playback_cached().get("output") or "jack",
-            source=snap.get("source") or "jack",
-        )
+        pos = snap.get("position") or 0
         return {
             "ok": True,
             "player": {
                 "playing": snap.get("playing"),
                 "paused": snap.get("paused"),
                 "name": snap.get("name") or "",
-                "position": snap.get("position"),
-                "playback": snap.get("playback"),
+                "position": pos,
+                "playback": pos,
                 "duration": snap.get("duration"),
-                "clock": ck,
             },
             "volume": self.player.volume(),
         }
@@ -619,10 +617,34 @@ class CryptApp(object):
             self.player.play(name, start=pos, silent=(pb.get("output") == "browser"))
         return pb, ""
 
-    def play_name(self, name, start=0.0, order=None, follow=False, conductor="", conductor_uid=""):
-        self.refresh()
+    def play_name(self, name, start=0.0, order=None, follow=False, conductor="", conductor_uid="", origin="local"):
+        origin = "nas" if origin == "nas" else "local"
         if AIRPLAY is not None and AIRPLAY.snapshot().get("active"):
             AIRPLAY.bounce()
+        if origin == "nas":
+            rel = nas_rel_ok(name)
+            if rel is None or rel == "":
+                return False
+            full = os.path.join(NAS_DIR, rel)
+            if not os.path.isfile(full):
+                self.player.error = "not found"
+                return False
+            with self.lock:
+                cleaned = []
+                if order:
+                    seen = set()
+                    for item in order:
+                        item = nas_rel_ok(str(item or ""))
+                        if item and item not in seen:
+                            cleaned.append(item)
+                            seen.add(item)
+                        if len(cleaned) >= 300:
+                            break
+                self.order = cleaned or [rel]
+                self.index = self.order.index(rel) if rel in self.order else 0
+                self._play_origin = "nas"
+            return self.player.play(rel, start=start, silent=self._silent(), origin="nas")
+        self.refresh()
         if not self._ensure_local(name):
             return False
         with self.lock:
@@ -653,9 +675,10 @@ class CryptApp(object):
                 prev = self.order[self.index]
             self.index = self.order.index(name)
             nxt = self.order[self.index + 1] if self.index + 1 < len(self.order) else ""
+            self._play_origin = "local"
             if prev and prev != name:
                 self.requests.pop(prev, None)
-        ok = self.player.play(name, start=start, silent=self._silent())
+        ok = self.player.play(name, start=start, silent=self._silent(), origin="local")
         if ok:
             WAVES.ensure(name, front=True)
             COVERS.ensure(name, front=True)
@@ -674,9 +697,15 @@ class CryptApp(object):
         return _playback_cached().get("output") == "browser"
 
     def _start_name(self, name, start=0.0, nxt="", follow=False):
+        origin = getattr(self, "_play_origin", "local") or "local"
+        if origin == "nas":
+            rel = nas_rel_ok(name)
+            if not rel or not os.path.isfile(os.path.join(NAS_DIR, rel)):
+                return False
+            return self.player.play(rel, start=start, silent=self._silent(), origin="nas")
         if not self._ensure_local(name):
             return False
-        ok = self.player.play(name, start=start, silent=self._silent())
+        ok = self.player.play(name, start=start, silent=self._silent(), origin="local")
         if ok:
             WAVES.ensure(name, front=True)
             COVERS.ensure(name, front=True)
@@ -927,6 +956,21 @@ class Handler(BaseHTTPRequestHandler):
                 scan = _qparam(qs, "scan") in ("1", "true", "yes")
                 self._send(200, WIFI.status(scan=scan))
                 return
+            if raw_path == "/api/nas":
+                snap = NAS.snapshot() if NAS is not None else {
+                    "available": False, "mounted": False, "error": "NAS not loaded",
+                }
+                self._send(200, {"ok": True, "nas": snap})
+                return
+            if raw_path in ("/api/nas/library", "/api/nas/browse"):
+                snap = NAS.snapshot() if NAS is not None else {"mounted": False, "error": "NAS not loaded"}
+                rel = _qparam(qs, "path") or _qparam(qs, "rel")
+                deep = _qparam(qs, "deep") in ("1", "true", "yes")
+                catalog = nas_browse(rel, deep=deep, mountpoint=NAS_DIR) if snap.get("mounted") else nasmod.empty_catalog(nas_rel_ok(rel) or "")
+                if not snap.get("mounted"):
+                    catalog["error"] = catalog.get("error") or (snap.get("error") or "NAS is not mounted")
+                self._send(200, {"ok": True, "nas": snap, "catalog": catalog, "tracks": catalog.get("tracks") or []})
+                return
             if raw_path == "/api/playlists":
                 tracks = _library()
                 self._send(200, {"playlists": PLAYLISTS.list([t["name"] for t in tracks])})
@@ -974,7 +1018,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(code, data)
                 return
             if raw_path == "/api/media":
-                full = _media_path(_qparam(qs, "name"))
+                full = _media_path(_qparam(qs, "name"), origin=_qparam(qs, "origin"))
                 if not full:
                     self._send(404, {"ok": False, "error": "not found"})
                     return
@@ -997,7 +1041,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             if raw_path == "/api/media":
-                full = _media_path(_qparam(qs, "name"))
+                full = _media_path(_qparam(qs, "name"), origin=_qparam(qs, "origin"))
                 if not full:
                     self._send(404, {"ok": False, "error": "not found"})
                     return
@@ -1042,6 +1086,7 @@ class Handler(BaseHTTPRequestHandler):
                     name,
                     start=body.get("start") or 0,
                     order=order,
+                    origin=body.get("origin") or "local",
                 )
                 self._send(200 if ok else 400, {"ok": ok, "error": APP.player.error})
                 return
@@ -1097,6 +1142,29 @@ class Handler(BaseHTTPRequestHandler):
                 output = body.get("output")
                 pb, err = APP.set_output(output)
                 self._send(200 if not err else 400, {"ok": not err, "output": pb.get("output"), "error": err, "airplay": AIRPLAY.snapshot() if AIRPLAY else {}})
+                return
+            if path == "/api/nas":
+                if NAS is None:
+                    self._send(409, {"ok": False, "error": "NAS tools are not available on this host"})
+                    return
+                if "host" in body or "share" in body or "folder" in body or "username" in body or "password" in body or "domain" in body:
+                    if not NAS.apply(body):
+                        snap = NAS.snapshot()
+                        self._send(400, {"ok": False, "error": snap.get("error") or "could not save", "nas": snap})
+                        return
+                want = body.get("enabled")
+                if want is True or body.get("connect"):
+                    ok = NAS.connect()
+                    snap = NAS.snapshot()
+                    self._send(200 if ok else 400, {"ok": ok, "error": snap.get("error") or "", "nas": snap})
+                    return
+                if want is False or body.get("disconnect"):
+                    NAS.disconnect()
+                    snap = NAS.snapshot()
+                    self._send(200, {"ok": True, "nas": snap})
+                    return
+                snap = NAS.snapshot()
+                self._send(200, {"ok": True, "nas": snap})
                 return
             if path == "/api/wifi":
                 if body.get("disconnect"):
@@ -1246,9 +1314,25 @@ def _boot_airplay():
         traceback.print_exc()
 
 
+def _boot_nas():
+    time.sleep(3)
+    try:
+        if NAS is not None and NAS.cfg.get("enabled"):
+            NAS.connect()
+    except Exception:
+        traceback.print_exc()
+
+
 def main():
+    global NAS
     os.makedirs(MUSIC_DIR, exist_ok=True)
+    try:
+        os.makedirs(NAS_DIR, exist_ok=True)
+    except OSError:
+        pass
+    NAS = NasShare(NAS_BIN, NAS_DIR, STATE_DIR)
     threading.Thread(target=_boot_airplay, daemon=True, name="boot-airplay").start()
+    threading.Thread(target=_boot_nas, daemon=True, name="boot-nas").start()
     httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     me = identity()
     print("Gigawatt %s listening on :%s music=%s id=%s uid=%s ip=%s" % (

@@ -5,7 +5,7 @@ set -e
 mkdir -p /data/www /data/music /data/crypt
 cp /tmp/VERSION /tmp/index.html /tmp/library.html /tmp/eq.html /tmp/karaoke.html /tmp/report.html /tmp/settings.html /tmp/crypt.css \
   /tmp/server.py /tmp/player.py /tmp/library.py /tmp/wave.py /tmp/lyrics.py /tmp/research.py /tmp/report.py /tmp/essay.py /tmp/identity.py \
-  /tmp/airplay.py /tmp/playback.py /tmp/cover.py /tmp/wifi.py /tmp/queueing.py /tmp/gigawatt-pulse.pa \
+  /tmp/airplay.py /tmp/playback.py /tmp/cover.py /tmp/wifi.py /tmp/nas.py /tmp/queueing.py /tmp/gigawatt-pulse.pa \
   /tmp/pin-hostname.sh /tmp/manifest.webmanifest /tmp/favicon.svg /tmp/icon.png /tmp/apple-touch-icon.png /data/www/
 rm -f /data/www/unison.py /data/www/peers.py /data/www/crypt_wire.py
 chmod +x /data/www/pin-hostname.sh /data/www/server.py /data/www/player.py
@@ -29,7 +29,30 @@ if [ -n "$APSRC" ]; then
   rm -f /data/opt/airplay/toslink-airplay-begin.sh /data/opt/airplay/toslink-airplay-end.sh
   chown -R RPM:RPM /data/opt/airplay
 fi
-chown -R RPM:RPM /data/www /data/music /data/crypt
+NASRC=""
+for cand in \
+  /tmp/gigawatt-nas/nas \
+  /tmp/gigawatt-nas \
+  /tmp/nas
+do
+  if [ -x "$cand/rclone" ] || [ -x "$cand/fusermount" ]; then
+    NASRC=$cand
+    break
+  fi
+done
+if [ -n "$NASRC" ]; then
+  mkdir -p /data/opt/nas
+  cp -a "$NASRC"/. /data/opt/nas/
+  chmod +x /data/opt/nas/rclone /data/opt/nas/fusermount /data/opt/nas/run-rclone 2>/dev/null || true
+  chown -R RPM:RPM /data/opt/nas
+fi
+mkdir -p /data/nas
+if [ -w /etc/fuse.conf ]; then
+  grep -q '^user_allow_other' /etc/fuse.conf || echo user_allow_other >> /etc/fuse.conf
+elif [ ! -f /etc/fuse.conf ]; then
+  echo user_allow_other > /etc/fuse.conf 2>/dev/null || true
+fi
+chown -R RPM:RPM /data/www /data/music /data/crypt /data/nas
 if [ -f /etc/pulse/daemon.conf ]; then
   if grep -q 'GIGAWATT-AUDIO' /etc/pulse/daemon.conf; then
     sed -i '/# GIGAWATT-AUDIO/,$d' /etc/pulse/daemon.conf

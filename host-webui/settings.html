@@ -84,6 +84,42 @@
       </div>
       <p class="meta tight" id="ap-meta"></p>
     </section>
+    <section class="card">
+      <div class="section-head">
+        <h2>NAS</h2>
+        <span class="badge" id="nas-badge">Off</span>
+      </div>
+      <p class="hint">Connect an SMB share. Tracks play from the share over TOSLINK — files stay on the NAS, not this disk.</p>
+      <p class="meta tight" id="nas-note"></p>
+      <div class="row">
+        <label class="field">Server
+          <input id="nas-host" type="text" maxlength="64" placeholder="192.168.1.10" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">Share
+          <input id="nas-share" type="text" maxlength="80" placeholder="Music" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="row">
+        <label class="field">Folder (optional)
+          <input id="nas-folder" type="text" maxlength="120" placeholder="FLAC" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">Domain (optional)
+          <input id="nas-domain" type="text" maxlength="64" autocomplete="off" spellcheck="false">
+        </label>
+      </div>
+      <div class="row">
+        <label class="field">Username
+          <input id="nas-user" type="text" maxlength="64" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">Password
+          <input id="nas-pass" type="password" maxlength="128" placeholder="unchanged if blank" autocomplete="off">
+        </label>
+      </div>
+      <div class="row">
+        <button type="button" class="primary" id="nas-on">Connect</button>
+        <button type="button" class="ghost" id="nas-off">Disconnect</button>
+      </div>
+    </section>
     <section class="card" id="eq">
       <div class="section-head">
         <h2>Equalizer</h2>
@@ -288,12 +324,84 @@ $("wifi-join").onclick = async () => {
     $("err").textContent = "Host is not answering";
   }
 };
+async function loadNas() {
+  try {
+    const data = await (await fetch("/api/nas")).json();
+    const nas = data.nas || {};
+    const on = !!nas.mounted;
+    $("nas-badge").textContent = !nas.available ? "Missing" : (on ? "On" : "Off");
+    $("nas-badge").className = "badge " + (on ? "live" : (nas.available ? "seen" : ""));
+    $("nas-on").disabled = !nas.available;
+    $("nas-off").disabled = !nas.available || !on;
+    const fill = (id, value) => {
+      const el = $(id);
+      if (el && document.activeElement !== el) el.value = value || "";
+    };
+    fill("nas-host", nas.host);
+    fill("nas-share", nas.share);
+    fill("nas-folder", nas.folder);
+    fill("nas-user", nas.username);
+    fill("nas-domain", nas.domain);
+    if (!nas.available) $("nas-note").textContent = "NAS tools are not installed on this host";
+    else if (nas.error) $("nas-note").textContent = nas.error;
+    else if (on) $("nas-note").textContent = "Connected to " + (nas.path || "the share") + ". Open Library and tap NAS.";
+    else $("nas-note").textContent = "Off. Connect an SMB share, then browse it in Library.";
+  } catch (e) {
+    $("nas-note").textContent = "Host is not answering";
+  }
+}
+function nasPayload(extra) {
+  const body = {
+    host: $("nas-host").value.trim(),
+    share: $("nas-share").value.trim(),
+    folder: $("nas-folder").value.trim(),
+    username: $("nas-user").value.trim(),
+    domain: $("nas-domain").value.trim(),
+  };
+  const pass = $("nas-pass").value;
+  if (pass) body.password = pass;
+  return Object.assign(body, extra || {});
+}
+$("nas-on").onclick = async () => {
+  $("nas-on").disabled = true;
+  $("nas-note").textContent = "Connecting…";
+  try {
+    const res = await fetch("/api/nas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(nasPayload({ enabled: true })),
+    });
+    const data = await res.json();
+    $("nas-pass").value = "";
+    $("err").textContent = data.ok ? "" : (data.error || "could not connect");
+    $("ok").textContent = data.ok ? "NAS connected" : "";
+  } catch (e) {
+    $("err").textContent = "Host is not answering";
+  }
+  loadNas();
+};
+$("nas-off").onclick = async () => {
+  try {
+    await fetch("/api/nas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+    $("ok").textContent = "NAS disconnected";
+    $("err").textContent = "";
+  } catch (e) {
+    $("err").textContent = "Host is not answering";
+  }
+  loadNas();
+};
 paintHost();
 loadPlayback();
 loadWifi(true);
+loadNas();
 setInterval(paintHost, 8000);
 setInterval(loadPlayback, 4000);
 setInterval(() => loadWifi(false), 8000);
+setInterval(loadNas, 8000);
 
 /* —— Equalizer (inlined from former /eq page) —— */
 let EQ_BANDS = [];

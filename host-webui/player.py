@@ -10,6 +10,7 @@ import threading
 import time
 
 MUSIC_DIR = os.environ.get("MUSIC_DIR", "/data/music")
+NAS_DIR = os.environ.get("NAS_DIR", "/data/nas")
 PULSE_SINK = os.environ.get("PULSE_SINK", "@DEFAULT_SINK@")
 FFMPEG_LOG = os.environ.get("FFMPEG_LOG", "/tmp/crypt-ffmpeg.log")
 PROGRESS_FILE = os.environ.get("PROGRESS_FILE", "/tmp/crypt-ff.progress")
@@ -492,32 +493,32 @@ class HostPlayer(object):
         self._vol_target = self._vol
         self._muted = False
         self._soft = False
-        self._clock_init()
+        self.origin = "local"
+        self._play_corr = 0.0
         self._set_mute(False)
         threading.Thread(target=self._watch, daemon=True).start()
         threading.Thread(target=self._vol_loop, name="vol-fade", daemon=True).start()
-        threading.Thread(target=self._clock_loop, name="time-clock", daemon=True).start()
 
     def snapshot(self):
         with self.lock:
             alive = self._alive_locked()
             playback = self._position_locked()
-            clock = self._clock_locked(playback)
             return {
                 "playing": bool(alive and not self.paused),
                 "paused": bool(self.paused and alive),
                 "name": self.name,
-                "position": clock["heard"],
-                "playback": clock["playback"],
+                "position": round(playback, 3),
+                "playback": round(playback, 3),
                 "duration": round(self.duration or 0.0, 3),
                 "error": self.error,
                 "eq": list(self.eq),
-                "clock": clock,
                 "source": "browser" if self._soft else "jack",
+                "origin": self.origin or "local",
             }
 
-    def play(self, relname, start=0.0, silent=False):
-        base = os.path.realpath(MUSIC_DIR)
+    def play(self, relname, start=0.0, silent=False, origin="local"):
+        origin = "nas" if origin == "nas" else "local"
+        base = os.path.realpath(NAS_DIR if origin == "nas" else MUSIC_DIR)
         full = os.path.realpath(os.path.join(base, relname.replace("\\", "/").lstrip("/")))
         if full != base and not full.startswith(base + os.sep):
             self.error = "not found"
@@ -532,6 +533,7 @@ class HostPlayer(object):
         if start < 0:
             start = 0.0
         with self.lock:
+            self.origin = origin
             self.name = os.path.relpath(full, base).replace("\\", "/")
             self.media = full
             self.duration = self._probe(full)
@@ -959,7 +961,6 @@ class HostPlayer(object):
         self.t0 = time.monotonic()
         self.paused = False
         self.error = ""
-        self._clock_on = True
         return True
 
     def _stop_locked(self):
@@ -973,8 +974,6 @@ class HostPlayer(object):
         self.generation += 1
         self._set_mute(False)
         self._play_corr = 0.0
-        self._ppm = 0.0
-        self._clock_on = False
         if proc is None:
             return
         try:
@@ -1033,11 +1032,6 @@ class HostPlayer(object):
         self.t0 = time.monotonic()
         self.paused = False
         self._play_corr = 0.0
-        self._ppm = 0.0
-        self._clock_on = False
-        self._sink_filt = None
-        lat_s = max(0.15, (self._pll["lat_ms"] or 400.0) / 1000.0)
-        self._sync_warm_until = self.t0 + lat_s + 0.12
         self.error = ""
         return True
 
@@ -1054,7 +1048,6 @@ class HostPlayer(object):
                         gen = self.generation
                         self.proc = None
                         self.hold = self.duration or self._position_locked()
-                        self._clock_on = False
             if ended:
                 last = gen
                 if self.on_end:

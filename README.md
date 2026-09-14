@@ -1,10 +1,10 @@
-# Gigawatt V2.2.29
+# Gigawatt V2.2.30
 
 Repo: [`GIGAWATT-V2`](https://github.com/GeorgieTech/GIGAWATT-V2)
 
 A local TOSLINK music player on a recycled Savant S2 host (SHC-S2-00 Quad). Library on this disk, web UI on port 80, optical out.
 
-**Current release: [V2.2.29](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.29)** (`v2.2.29`). Previous: [V2.2.28](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.28) · [V2.2.27](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.27).
+**Current release: [V2.2.30](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.30)** (`v2.2.30`). Previous: [V2.2.29](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.29) · [V2.2.28](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.28).
 
 This project is **not affiliated with Savant Systems**.
 
@@ -19,9 +19,9 @@ There is **no cluster**, linked library, Unison, or host-to-host discovery. This
 - **AirPlay 1** to this host. Settings → AirPlay (`Gigawatt 39DB`, …). iPhone/Mac → Pulse → TOSLINK.
 - Dark Playing and Library UI, Karaoke, Report, 31-band TOSLINK EQ (in Settings)
 - Play through the S2 **TOSLINK** jack (`ffmpeg` → `paplay` → Pulse → `imx-spdif`)
-- Host Time Clock so karaoke follows audible TOSLINK time
+- **NAS** SMB share from Settings. Library can browse it; playback reads the share (files stay on the NAS).
 
-No Spotify, DLNA, NAS, SSC expanders, AirPlay 2, or multi-host linking.
+No Spotify, DLNA, SSC expanders, AirPlay 2, or multi-host linking.
 
 Live UI: [http://192.168.1.142/](http://192.168.1.142/)
 

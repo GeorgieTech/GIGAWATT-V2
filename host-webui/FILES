@@ -19,6 +19,7 @@ cover.py
 airplay.py
 playback.py
 wifi.py
+nas.py
 queueing.py
 manifest.webmanifest
 favicon.svg

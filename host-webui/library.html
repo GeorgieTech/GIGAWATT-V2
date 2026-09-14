@@ -56,6 +56,10 @@
           <button type="button" class="ghost" id="btn-manage">Manage</button>
         </div>
       </div>
+      <div class="lib-toggle" id="source-toggle" role="tablist" aria-label="Library source">
+        <button type="button" data-source="local" class="on">This host</button>
+        <button type="button" data-source="nas" id="src-nas">NAS</button>
+      </div>
       <p class="lib-lead" id="lib-lead">Tap a track to play.</p>
       <p class="hint" id="shelf-hint" hidden></p>
       <div class="manage-bar hidden" id="manage-bar">
@@ -109,6 +113,9 @@
 <script>
 const $ = (id) => document.getElementById(id);
 let last = { tracks: [], playlists: [], player: {} };
+let source = "local";
+let nasCat = { artists: [], albums: [], tracks: [], crumbs: [], path: "", error: "", mounted: false };
+let nasPath = "";
 let view = "artists";
 let artist = "";
 let album = "";
@@ -226,6 +233,7 @@ function playlistTracks(pl) {
 
 function isRemote(t) {
   if (!t) return false;
+  if (t.origin === "nas") return false;
   if (t.local === false) return true;
   if (t.here === false && t.local !== true) return true;
   return false;
@@ -300,7 +308,9 @@ async function playList(list, start) {
   if (!names.length) return;
   const name = start || names[0];
   const row = (list || []).filter((t) => t.name === name)[0];
-  await playRemote(row, () => api("/api/play", { name: name, order: names }));
+  const body = { name: name, order: names };
+  if (source === "nas") body.origin = "nas";
+  await playRemote(row, () => api("/api/play", body));
 }
 async function delName(name, ev) {
   ev.stopPropagation();
@@ -345,6 +355,25 @@ $("picker-new").onclick = async () => {
   if (addTarget && st.playlist) await addTo(st.playlist.id);
   else { $("picker").classList.add("hidden"); render(); }
 };
+
+document.querySelectorAll("#source-toggle [data-source]").forEach((btn) => {
+  btn.onclick = () => {
+    source = btn.dataset.source;
+    artist = "";
+    album = "";
+    playlistId = "";
+    nasPath = "";
+    document.querySelectorAll("#source-toggle [data-source]").forEach((b) => b.classList.toggle("on", b === btn));
+    const upload = document.querySelector(".lib-upload");
+    if (upload) upload.hidden = source === "nas";
+    $("btn-manage").hidden = source === "nas";
+    const plBtn = document.querySelector('#toggle [data-view="playlists"]');
+    if (plBtn) plBtn.hidden = source === "nas";
+    if (source === "nas" && view === "playlists") view = "artists";
+    if (source === "nas") loadNasBrowse("");
+    else render();
+  };
+});
 
 document.querySelectorAll("#toggle [data-view]").forEach((btn) => {
   btn.onclick = () => {
@@ -573,7 +602,80 @@ function rowTrack(t, opts) {
   return li;
 }
 
+async function loadNasBrowse(path) {
+  nasPath = path || "";
+  $("lib-lead").textContent = "Loading NAS…";
+  try {
+    const data = await fetchJson("/api/nas/browse?deep=1&path=" + encodeURIComponent(nasPath), 20000);
+    const cat = data.catalog || {};
+    nasCat = cat;
+    nasCat.mounted = !!(data.nas && data.nas.mounted);
+    if (data.nas) {
+      $("src-nas").textContent = data.nas.mounted ? "NAS" : "NAS";
+    }
+    renderNas();
+  } catch (e) {
+    nasCat = { artists: [], albums: [], tracks: [], crumbs: [], path: nasPath, error: "NAS is not answering", mounted: false };
+    renderNas();
+  }
+}
+function renderNas() {
+  document.querySelectorAll("#toggle [data-view]").forEach((btn) => {
+    btn.classList.toggle("on", btn.dataset.view === view);
+  });
+  const ul = $("list");
+  const actions = $("actions");
+  ul.innerHTML = "";
+  ul.className = "tracks browse-list";
+  actions.innerHTML = "";
+  actions.hidden = true;
+  const crumbs = $("crumbs");
+  crumbs.innerHTML = "";
+  (nasCat.crumbs || [{ label: "NAS", path: "" }]).forEach((c, i, arr) => {
+    crumbs.appendChild(crumb(c.label, i === arr.length - 1 ? null : () => loadNasBrowse(c.path)));
+  });
+  if (!nasCat.mounted && nasCat.error) {
+    $("lib-lead").textContent = nasCat.error || "Connect a NAS in Settings.";
+    ul.appendChild(emptyState("NAS is off", "Settings → NAS → Connect. Files stay on the share."));
+    return;
+  }
+  $("lib-lead").textContent = nasCat.error || "Tap a folder or track. Playback reads the share — nothing is copied here.";
+  const q = ($("filter").value || "").trim().toLowerCase();
+  if (view === "artists" && (nasCat.artists || []).length && !artist) {
+    nasCat.artists.filter((a) => !q || (a.name || "").toLowerCase().indexOf(q) >= 0).forEach((a) => {
+      const li = document.createElement("li");
+      li.innerHTML = "<span class='name'>" + esc(a.name) + "</span>";
+      li.onclick = () => loadNasBrowse(a.path);
+      ul.appendChild(li);
+    });
+  } else if ((nasCat.albums || []).length && view !== "tracks") {
+    nasCat.albums.filter((a) => !q || (a.name || "").toLowerCase().indexOf(q) >= 0).forEach((a) => {
+      const li = document.createElement("li");
+      li.innerHTML = "<span class='name'>" + esc(a.name) + "</span><span class='size'>" + esc(a.artist || "") + "</span>";
+      li.onclick = () => loadNasBrowse(a.path);
+      ul.appendChild(li);
+    });
+  }
+  const list = (nasCat.tracks || []).filter((t) => {
+    if (q && ((t.title || "") + " " + (t.artist || "") + " " + (t.album || "")).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  });
+  if (list.length) {
+    actions.hidden = false;
+    const play = document.createElement("button");
+    play.className = "primary";
+    play.textContent = "Play all";
+    play.onclick = () => playList(list);
+    actions.appendChild(play);
+    list.forEach((t) => ul.appendChild(rowTrack(t, { order: list })));
+  }
+  if (!ul.children.length) ul.appendChild(emptyState("No music in this folder", "Go up a level, or pick a different share folder in Settings."));
+}
 function render() {
+  if (source === "nas") {
+    renderNas();
+    return;
+  }
   document.querySelectorAll("#toggle [data-view]").forEach((btn) => {
     btn.classList.toggle("on", btn.dataset.view === view);
   });

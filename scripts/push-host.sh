@@ -2,7 +2,7 @@
 # Copy this checkout onto one Gigawatt host and install.
 # Usage: scripts/push-host.sh 192.168.1.142
 # SSH user is RPM. Do not put the password in this file.
-# Push this checkout onto 192.168.1.142 (currently v2.2.29).
+# Push this checkout onto 192.168.1.142 (currently v2.2.30).
 set -euo pipefail
 HOST="${1:-}"
 if [ -z "$HOST" ]; then
@@ -35,7 +35,8 @@ SSH=(ssh -o IPQoS=none -o ConnectTimeout=30)
 SCP=(scp -O -o IPQoS=none -o ConnectTimeout=30)
 echo "push $(cat "$UI/VERSION") -> RPM@$HOST"
 "${SCP[@]}" "${FILES[@]}" "RPM@$HOST:/tmp/"
-"${SSH[@]}" "RPM@$HOST" rm -rf /tmp/gigawatt-airplay
+"${SSH[@]}" "RPM@$HOST" rm -rf /tmp/gigawatt-airplay /tmp/gigawatt-nas
 "${SCP[@]}" -r "$UI/airplay" "RPM@$HOST:/tmp/gigawatt-airplay"
+"${SCP[@]}" -r "$UI/nas" "RPM@$HOST:/tmp/gigawatt-nas"
 "${SSH[@]}" "RPM@$HOST" sudo env bash /tmp/install-on-host.sh
 "${SSH[@]}" "RPM@$HOST" cat /data/www/VERSION
