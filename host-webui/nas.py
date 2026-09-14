@@ -393,6 +393,10 @@ class NasShare(object):
                 os.makedirs(self.mountpoint, exist_ok=True)
             except OSError:
                 pass
+            try:
+                subprocess.call(["modprobe", "fuse"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
             env = self._env()
             remote = self._remote_path_locked()
             cache_dir = os.path.join(self.state_dir, "rclone-vfs")
@@ -431,7 +435,6 @@ class NasShare(object):
                 str(os.getuid()),
                 "--gid",
                 str(os.getgid()),
-                "--allow-other",
                 "--log-file",
                 "/tmp/crypt-rclone.log",
             ]

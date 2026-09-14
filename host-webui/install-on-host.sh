@@ -47,10 +47,17 @@ if [ -n "$NASRC" ]; then
   chown -R RPM:RPM /data/opt/nas
 fi
 mkdir -p /data/nas
+modprobe fuse 2>/dev/null || true
+if [ -e /dev/fuse ]; then
+  chmod 666 /dev/fuse 2>/dev/null || true
+fi
 if [ -w /etc/fuse.conf ]; then
   grep -q '^user_allow_other' /etc/fuse.conf || echo user_allow_other >> /etc/fuse.conf
 elif [ ! -f /etc/fuse.conf ]; then
   echo user_allow_other > /etc/fuse.conf 2>/dev/null || true
+fi
+if [ -x /data/opt/nas/fusermount ]; then
+  chmod 4755 /data/opt/nas/fusermount 2>/dev/null || chmod +x /data/opt/nas/fusermount
 fi
 chown -R RPM:RPM /data/www /data/music /data/crypt /data/nas
 if [ -f /etc/pulse/daemon.conf ]; then

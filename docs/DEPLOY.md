@@ -1,4 +1,4 @@
-# Deploy notes — Gigawatt V2.2.31
+# Deploy notes — Gigawatt V2.2.32
 
 Live target: **192.168.1.142** (SHC-S2-00 Quad). Never 192.168.1.40 / .178 / .179 / .180.
 
@@ -11,7 +11,7 @@ SSH user: `RPM`. Do not commit the password. `scp -O` from modern macOS.
 ```sh
 git clone https://github.com/GeorgieTech/GIGAWATT-V2.git
 cd GIGAWATT-V2
-git checkout v2.2.31
+git checkout v2.2.32
 chmod +x scripts/push-host.sh host-webui/install-on-host.sh
 scripts/push-host.sh 192.168.1.142
 ```
@@ -22,7 +22,7 @@ Confirm:
 curl -s http://192.168.1.142/api/status | python3 -c "import json,sys; print(json.load(sys.stdin).get('version'))"
 ```
 
-It must print `2.2.31`. AirPlay binaries land in `/data/opt/airplay`. NAS tools land in `/data/opt/nas`. Time Clock UI is removed. Playing shows title/cover/queue; TrueNAS dataset paths split to the SMB share name.
+It must print `2.2.32`. NAS FUSE needs `CAP_SYS_ADMIN` and `modprobe fuse` (same as Beta2). TrueNAS dataset paths split to the SMB share name.
 
 ## First-time unit (once per chassis)
 
