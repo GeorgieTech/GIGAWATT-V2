@@ -61,6 +61,19 @@ class BrowseTests(unittest.TestCase):
         catalog = nas.browse("", mountpoint="/tmp/does-not-exist-nas")
         self.assertTrue(catalog.get("error"))
 
+    def test_root_artists_keep_full_names(self):
+        root = tempfile.mkdtemp(prefix="nas-browse-")
+        try:
+            os.makedirs(os.path.join(root, "Kanye West"))
+            os.makedirs(os.path.join(root, "The Notorious B.I.G."))
+            catalog = nas.browse("", mountpoint=root)
+            names = [row["name"] for row in catalog.get("artists") or []]
+            self.assertIn("Kanye West", names)
+            self.assertIn("The Notorious B.I.G.", names)
+            self.assertTrue(all(len(n) > 4 for n in names))
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

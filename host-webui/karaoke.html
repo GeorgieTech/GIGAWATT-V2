@@ -225,9 +225,15 @@ async function loadLyrics(name, fetchRemote) {
   }
   let data;
   if (fetchRemote) {
-    data = await api("/api/lyrics", { name: name, fetch: true, duration: playClock.duration || 0 });
+    data = await api("/api/lyrics", {
+      name: name,
+      fetch: true,
+      duration: playClock.duration || 0,
+      origin: (last.player || {}).origin || playClock.origin || ""
+    });
   } else {
-    data = await (await fetch("/api/lyrics?name=" + encodeURIComponent(name))).json();
+    const origin = (last.player || {}).origin || playClock.origin || "";
+    data = await (await fetch("/api/lyrics?name=" + encodeURIComponent(name) + (origin ? ("&origin=" + encodeURIComponent(origin)) : ""))).json();
   }
   lyric = {
     name: name,
@@ -401,7 +407,8 @@ async function tick() {
       heard: p.position || 0,
       playing: playing,
       duration: p.duration || 0,
-      name: p.name || ""
+      name: p.name || "",
+      origin: p.origin || ""
     };
     $("hostline").textContent = playing ? "TOSLINK · karaoke" : "SHR-S2 · karaoke";
     $("playbtn").classList.toggle("is-playing", playing);

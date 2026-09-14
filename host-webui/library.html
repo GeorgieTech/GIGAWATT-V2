@@ -11,7 +11,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/crypt.css">
+<link rel="stylesheet" href="/crypt.css?v=2.2.35">
 </head>
 <body class="library-page">
 <div class="app">
@@ -36,6 +36,17 @@
       </div>
       <div class="job-detail" id="job-detail"></div>
       <div class="job-stay" id="job-stay">Do not refresh or leave this page until this finishes.</div>
+    </div>
+    <div class="job lyrics-job hidden" id="lyrics-job" aria-live="polite">
+      <div class="job-head">
+        <div class="job-title" id="lyrics-title">Preparing lyrics</div>
+        <div class="job-pct" id="lyrics-pct">0%</div>
+      </div>
+      <div class="job-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="lyrics-bar">
+        <div class="job-fill" id="lyrics-fill"></div>
+      </div>
+      <div class="job-detail" id="lyrics-detail"></div>
+      <div class="job-stay" id="lyrics-stay">This host may feel slow until lyrics finish. NAS tracks are skipped — fetch those from Karaoke.</div>
     </div>
     <section class="card lib-upload">
       <div class="section-head">
@@ -128,6 +139,8 @@ let draft = {};
 let genres = [];
 let jobBusy = false;
 let jobTimer = 0;
+let lyricsHideTimer = 0;
+let lyricsWasBusy = false;
 const AUDIO_EXT = { ".mp3":1, ".flac":1, ".opus":1, ".ogg":1, ".wav":1, ".m4a":1, ".aac":1 };
 
 function pretty(n) {
@@ -642,16 +655,31 @@ function renderNas() {
   $("lib-lead").textContent = nasCat.error || "Tap a folder or track. Playback reads the share — nothing is copied here.";
   const q = ($("filter").value || "").trim().toLowerCase();
   if (view === "artists" && (nasCat.artists || []).length && !artist) {
+    let letter = "";
     nasCat.artists.filter((a) => !q || (a.name || "").toLowerCase().indexOf(q) >= 0).forEach((a) => {
+      const L = ((a.name || "?").charAt(0) || "#").toUpperCase();
+      if (L !== letter) {
+        letter = L;
+        const h = document.createElement("li");
+        h.className = "letter";
+        h.textContent = L;
+        ul.appendChild(h);
+      }
       const li = document.createElement("li");
-      li.innerHTML = "<span class='name'>" + esc(a.name) + "</span>";
+      li.className = "nas-folder";
+      li.innerHTML = coverHTML(a.name, a.name, true) +
+        "<div class='grow'><div class='name'>" + esc(a.name) + "</div></div>";
       li.onclick = () => loadNasBrowse(a.path);
       ul.appendChild(li);
     });
   } else if ((nasCat.albums || []).length && view !== "tracks") {
     nasCat.albums.filter((a) => !q || (a.name || "").toLowerCase().indexOf(q) >= 0).forEach((a) => {
       const li = document.createElement("li");
-      li.innerHTML = "<span class='name'>" + esc(a.name) + "</span><span class='size'>" + esc(a.artist || "") + "</span>";
+      li.className = "nas-folder";
+      li.innerHTML = coverHTML(a.name, a.name, false) +
+        "<div class='grow'><div class='name'>" + esc(a.name) + "</div>" +
+        (a.artist ? "<div class='sub'>" + esc(a.artist) + "</div>" : "") +
+        "</div>";
       li.onclick = () => loadNasBrowse(a.path);
       ul.appendChild(li);
     });
@@ -925,6 +953,43 @@ function finishJob(ok, title, detail) {
   paintJob(100, title, detail, ok ? "Complete. You can leave this page." : "Finished with errors. You can leave this page.", ok ? "done" : "fail");
   hideJobLater();
 }
+function paintLyricsPrep(prep) {
+  const box = $("lyrics-job");
+  if (!box) return;
+  prep = prep || {};
+  const busy = !!prep.busy;
+  const total = prep.total || 0;
+  const done = prep.done || 0;
+  const pct = Math.max(0, Math.min(100, parseInt(prep.pct, 10) || 0));
+  if (busy) {
+    lyricsWasBusy = true;
+    if (lyricsHideTimer) { clearTimeout(lyricsHideTimer); lyricsHideTimer = 0; }
+    box.classList.remove("hidden", "done", "fail");
+    $("lyrics-title").textContent = "Preparing lyrics";
+    $("lyrics-pct").textContent = pct + "%";
+    $("lyrics-fill").style.width = pct + "%";
+    $("lyrics-bar").setAttribute("aria-valuenow", String(pct));
+    const label = prep.title || prep.current || "";
+    $("lyrics-detail").textContent = (total ? (done + " of " + total) : "") + (label ? (" · " + label) : "");
+    $("lyrics-stay").textContent = "This host may feel slow until lyrics finish. NAS tracks wait until you tap Fetch in Karaoke.";
+    return;
+  }
+  if (lyricsWasBusy) {
+    lyricsWasBusy = false;
+    box.classList.remove("hidden", "fail");
+    box.classList.add("done");
+    $("lyrics-title").textContent = "Lyrics ready";
+    $("lyrics-pct").textContent = "100%";
+    $("lyrics-fill").style.width = "100%";
+    $("lyrics-bar").setAttribute("aria-valuenow", "100");
+    const found = prep.found || 0;
+    const failed = prep.failed || 0;
+    $("lyrics-detail").textContent = found + " with lyrics" + (failed ? (", " + failed + " not found") : "");
+    $("lyrics-stay").textContent = "Complete. Karaoke can use these tracks.";
+    if (lyricsHideTimer) clearTimeout(lyricsHideTimer);
+    lyricsHideTimer = setTimeout(() => { box.classList.add("hidden"); }, 8000);
+  }
+}
 function putFile(file, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -1041,7 +1106,7 @@ function applyLib(st, lib, force) {
   const shelves = peer.shelves || [];
   $("hostline").textContent = p.name ? ("Now · " + titleOf({ name: p.name, title: "" })) : ((st.host || st.model || "SHR-S2") + " · TOSLINK");
   const lead = $("lib-lead");
-  if (lead) lead.textContent = "Tap a track to play.";
+  if (lead && source !== "nas") lead.textContent = "Tap a track to play.";
   const shelfHint = $("shelf-hint");
   if (shelves.length) {
     shelfHint.hidden = false;
@@ -1052,7 +1117,12 @@ function applyLib(st, lib, force) {
   const d = lib.disk || st.disk || {};
   const n = (lib.tracks || []).length;
   const scan = lib.scanning ? " · reading tags" : "";
-  $("disk").textContent = n + " track" + (n === 1 ? "" : "s") + " · " + pretty(d.free || 0) + " free" + scan;
+  const prep = st.lyrics_prep || lib.lyrics_prep || {};
+  const lyricsBit = (prep.busy && prep.total)
+    ? (" · lyrics " + (prep.done || 0) + "/" + prep.total)
+    : "";
+  $("disk").textContent = n + " track" + (n === 1 ? "" : "s") + " · " + pretty(d.free || 0) + " free" + scan + lyricsBit;
+  paintLyricsPrep(prep);
   if (!jobBusy) {
     $("err").textContent = (st.player && st.player.error) || peer.error || "";
   }

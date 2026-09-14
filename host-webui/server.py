@@ -266,6 +266,7 @@ def _library_payload(local_only=False, tracks=None):
         "playlists": PLAYLISTS.list([t["name"] for t in tracks]),
         "genres": list(GENRES),
         "peer": {"shelves": [], "error": ""},
+        "lyrics_prep": LYRICS.status(),
     }
 
 
@@ -524,6 +525,7 @@ class CryptApp(object):
             "nas": NAS.snapshot() if NAS is not None else {
                 "available": False, "mounted": False, "enabled": False, "error": "",
             },
+            "lyrics_prep": LYRICS.status(),
         }
 
     def clock(self):
@@ -543,51 +545,29 @@ class CryptApp(object):
         }
 
     def prep_track(self, name, front=False):
-        """Enqueue wave/cover/lyrics prep used for Time Clock + karaoke readiness."""
+        """Enqueue wave/cover/lyrics prep for a file on this host. NAS is skipped."""
         rel = (name or "").replace("\\", "/").lstrip("/")
-        if not rel:
+        if not rel or ".." in rel.split("/"):
             return False
         full = os.path.join(MUSIC_DIR, rel)
         if not os.path.isfile(full):
             return False
         WAVES.ensure(rel, front=bool(front))
         COVERS.ensure(rel, front=bool(front))
-        threading.Thread(
-            target=self._prep_lyrics,
-            args=(rel,),
-            daemon=True,
-            name="prep-lyrics",
-        ).start()
+        LYRICS.enqueue(rel, front=bool(front))
         return True
 
-    def _prep_lyrics(self, rel):
-        try:
-            # Duration helps LRCLIB /get; search still works without it.
-            dur = 0.0
-            full = os.path.join(MUSIC_DIR, rel)
-            try:
-                raw = subprocess.check_output(
-                    [
-                        "ffprobe", "-v", "error",
-                        "-show_entries", "format=duration",
-                        "-of", "json", full,
-                    ],
-                    stderr=subprocess.DEVNULL,
-                    timeout=4,
-                )
-                data = json.loads(raw.decode("utf-8") or "{}")
-                dur = float(((data.get("format") or {}).get("duration") or 0) or 0)
-            except Exception:
-                dur = 0.0
-            LYRICS.lookup(rel, fetch=True, duration=dur)
-        except Exception:
-            traceback.print_exc()
-
-    def lyrics(self, name, fetch=False, duration=0):
+    def lyrics(self, name, fetch=False, duration=0, origin=""):
         rel = (name or "").strip()
         snap = self.player.snapshot()
         if not rel:
             rel = snap.get("name") or ""
+        origin = "nas" if str(origin or "").strip().lower() == "nas" else ""
+        if not origin:
+            if rel and snap.get("name") == rel and (snap.get("origin") or "") == "nas":
+                origin = "nas"
+            else:
+                origin = "local"
         dur = 0.0
         try:
             dur = float(duration or 0)
@@ -595,7 +575,7 @@ class CryptApp(object):
             dur = 0.0
         if rel and snap.get("name") == rel:
             dur = snap.get("duration") or dur
-        return LYRICS.lookup(rel, fetch=bool(fetch), duration=dur)
+        return LYRICS.lookup(rel, fetch=bool(fetch), duration=dur, origin=origin)
 
     def report(self, name, fetch=False, duration=0):
         rel = (name or "").strip()
@@ -964,7 +944,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if raw_path == "/api/lyrics":
                 name = _qparam(qs, "name")
-                self._send(200, APP.lyrics(name, fetch=False))
+                self._send(200, APP.lyrics(name, fetch=False, origin=_qparam(qs, "origin")))
                 return
             if raw_path == "/api/report":
                 name = _qparam(qs, "name")
@@ -1251,7 +1231,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/lyrics":
                 name = (body.get("name") or "").strip()
-                self._send(200, APP.lyrics(name, fetch=bool(body.get("fetch")), duration=body.get("duration") or 0))
+                self._send(200, APP.lyrics(
+                    name,
+                    fetch=bool(body.get("fetch")),
+                    duration=body.get("duration") or 0,
+                    origin=body.get("origin") or "",
+                ))
                 return
             if path == "/api/report":
                 name = (body.get("name") or "").strip()

@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 
 try:
     from urllib.parse import urlencode
@@ -22,12 +23,12 @@ except ImportError:
     from urllib import urlencode
     from urllib2 import Request, urlopen
 
-from player import MUSIC_DIR
+from player import MUSIC_DIR, NAS_DIR
 from library import CATALOG, UNKNOWN_ARTIST, UNKNOWN_ALBUM, identity_from_path
 
 LYRICS_DIR = os.environ.get("CRYPT_LYRICS", "/data/crypt/lyrics")
 LRCLIB = os.environ.get("CRYPT_LRCLIB", "https://lrclib.net/api")
-CLIENT = "CRYPT/2.1.0 (https://github.com/GeorgieTech/GIGAWATT-V2)"
+CLIENT = "CRYPT/2.2.35 (https://github.com/GeorgieTech/GIGAWATT-V2)"
 AUDIO_EXT = (".mp3", ".flac", ".opus", ".ogg", ".wav", ".m4a", ".aac")
 
 _TS = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]")
@@ -158,24 +159,42 @@ def parse_plain(text):
     return {"meta": {"title": "", "artist": "", "album": ""}, "lines": lines}
 
 
-def _join_rel(rel):
+def _join_rel(rel, origin="local"):
     rel = (rel or "").replace("\\", "/").lstrip("/")
     if not rel or ".." in rel.split("/"):
         return "", None
-    base = os.path.realpath(MUSIC_DIR)
+    origin = "nas" if origin == "nas" else "local"
+    base = os.path.realpath(NAS_DIR if origin == "nas" else MUSIC_DIR)
     full = os.path.realpath(os.path.join(base, rel))
     if full == base or not full.startswith(base + os.sep):
         return rel, None
     return rel, full
 
 
-def _full_audio(rel):
-    rel, full = _join_rel(rel)
+def _full_audio(rel, origin="local"):
+    rel, full = _join_rel(rel, origin=origin)
     if not full or not os.path.isfile(full):
         return None
     if os.path.splitext(full)[1].lower() not in AUDIO_EXT:
         return None
     return full
+
+
+def _probe_duration(full):
+    try:
+        raw = subprocess.check_output(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "json", full,
+            ],
+            stderr=subprocess.DEVNULL,
+            timeout=4,
+        )
+        data = json.loads(raw.decode("utf-8") or "{}")
+        return float(((data.get("format") or {}).get("duration") or 0) or 0)
+    except Exception:
+        return 0.0
 
 
 def sidecar_paths(full):
@@ -253,17 +272,42 @@ def _payload(source, parsed, synced, artist="", title="", album="", name=""):
 
 
 class LyricsIndex(object):
-    def __init__(self):
+    def __init__(self, start=True):
         self.lock = threading.Lock()
         self.mem = {}
+        self.queue = []
+        self.queued = set()
+        self.busy = ""
+        self.current_title = ""
+        self.batch_total = 0
+        self.batch_done = 0
+        self.batch_ok = 0
+        self.batch_fail = 0
+        self._backfill_at = 0.0
+        self._backfill = bool(start)
+        if start:
+            t = threading.Thread(target=self._loop, name="lyrics-prep", daemon=True)
+            t.start()
 
-    def _track_info(self, rel):
-        for t in CATALOG.tracks():
-            if t.get("name") == rel:
-                return t
-        ident = identity_from_path(rel)
-        ident["name"] = rel
-        return ident
+    def _track_info(self, rel, origin="local"):
+        if origin != "nas":
+            for t in CATALOG.tracks():
+                if t.get("name") == rel:
+                    return t
+            ident = identity_from_path(rel)
+            ident["name"] = rel
+            return ident
+        try:
+            import nas as nasmod
+            artist, album, title = nasmod.parse_nas_meta(rel)
+        except Exception:
+            artist, album, title = "", "", os.path.splitext(os.path.basename(rel or ""))[0]
+        return {
+            "name": rel,
+            "artist": artist or UNKNOWN_ARTIST,
+            "album": album or UNKNOWN_ALBUM,
+            "title": title or "",
+        }
 
     def _remember(self, rel, payload):
         if not rel or not isinstance(payload, dict) or not payload.get("ok"):
@@ -272,15 +316,29 @@ class LyricsIndex(object):
             self.mem[rel] = payload
         return payload
 
-    def ready(self, rel):
-        """True when local/cached lyrics exist (no remote fetch, no embedded probe)."""
-        rel, full = _join_rel(rel)
-        if not rel:
-            return False
+    def _cache_hit(self, rel):
         with self.lock:
             hit = self.mem.get(rel)
-            if isinstance(hit, dict) and hit.get("ok") and hit.get("lines"):
-                return True
+            if isinstance(hit, dict):
+                return hit
+        cache_path = _cache_path(rel)
+        try:
+            with open(cache_path, "r") as fh:
+                data = json.load(fh)
+            if isinstance(data, dict):
+                return data
+        except (OSError, ValueError, TypeError):
+            pass
+        return None
+
+    def ready(self, rel, origin="local"):
+        """True when local/cached lyrics exist (no remote fetch, no embedded probe)."""
+        rel, full = _join_rel(rel, origin=origin)
+        if not rel:
+            return False
+        hit = self._cache_hit(rel)
+        if isinstance(hit, dict) and hit.get("ok") and hit.get("lines"):
+            return True
         if full:
             for path in sidecar_paths(full):
                 if not os.path.isfile(path):
@@ -290,19 +348,165 @@ class LyricsIndex(object):
                         return True
                 except OSError:
                     continue
+        return False
+
+    def missed(self, rel):
+        hit = self._cache_hit(rel)
+        if not isinstance(hit, dict):
+            return False
+        if hit.get("ok") and hit.get("lines"):
+            return False
+        return bool(hit.get("attempted"))
+
+    def enqueue(self, rel, front=False):
+        """Queue a host-disk track for automatic lyrics fetch. NAS paths are ignored."""
+        rel, full = _join_rel(rel, origin="local")
+        if not rel or not full or not os.path.isfile(full):
+            return False
+        if os.path.splitext(full)[1].lower() not in AUDIO_EXT:
+            return False
+        if self.ready(rel, origin="local") or self.missed(rel):
+            return False
+        with self.lock:
+            if rel in self.queued or rel == self.busy:
+                return True
+            if not self.queue and not self.busy:
+                self.batch_total = 0
+                self.batch_done = 0
+                self.batch_ok = 0
+                self.batch_fail = 0
+            if front:
+                self.queue.insert(0, rel)
+            else:
+                self.queue.append(rel)
+            self.queued.add(rel)
+            self.batch_total += 1
+        return True
+
+    def status(self):
+        with self.lock:
+            pending = len(self.queue)
+            busy = bool(self.busy or pending)
+            total = self.batch_total
+            done = self.batch_done
+            working = done + (1 if self.busy else 0)
+            pct = 0
+            if total:
+                pct = int(round(100.0 * working / float(total)))
+                if pct > 100:
+                    pct = 100
+            elif not busy:
+                pct = 100
+            return {
+                "ok": True,
+                "busy": busy,
+                "current": self.busy,
+                "title": self.current_title,
+                "pending": pending,
+                "done": done,
+                "found": self.batch_ok,
+                "failed": self.batch_fail,
+                "total": total,
+                "pct": pct,
+            }
+
+    def _loop(self):
+        idle_since = time.time()
+        while True:
+            rel = ""
+            with self.lock:
+                if self.queue:
+                    rel = self.queue.pop(0)
+                    self.queued.discard(rel)
+                    self.busy = rel
+                    self.current_title = os.path.splitext(os.path.basename(rel))[0].replace("_", " ")
+            if rel:
+                self._prep_one(rel)
+                idle_since = time.time()
+                time.sleep(0.25)
+                continue
+            if self._backfill and time.time() - idle_since >= 2.0:
+                if time.time() - self._backfill_at >= 8.0:
+                    self._backfill_at = time.time()
+                    self._offer_catalog()
+                    idle_since = time.time()
+            time.sleep(0.4)
+
+    def _offer_catalog(self):
+        if getattr(CATALOG, "scanning", False):
+            return
+        try:
+            tracks = CATALOG.tracks()
+        except Exception:
+            return
+        n = 0
+        for row in tracks or []:
+            if n >= 400:
+                break
+            name = row.get("name") or ""
+            if not name:
+                continue
+            if self.enqueue(name):
+                n += 1
+
+    def _prep_one(self, rel):
+        rel, full = _join_rel(rel, origin="local")
+        dur = _probe_duration(full) if full else 0.0
+        info = self._track_info(rel, origin="local")
+        label = (info.get("title") or os.path.splitext(os.path.basename(rel or ""))[0]).replace("_", " ")
+        artist = info.get("artist") or ""
+        if artist and artist != UNKNOWN_ARTIST:
+            label = artist + " — " + label
+        with self.lock:
+            self.current_title = label
+        ok = False
+        try:
+            data = self.lookup(rel, fetch=True, duration=dur, origin="local")
+            ok = bool(data.get("ok") and data.get("lines"))
+        except Exception:
+            ok = False
+        with self.lock:
+            self.batch_done += 1
+            if ok:
+                self.batch_ok += 1
+            else:
+                self.batch_fail += 1
+            self.busy = ""
+            self.current_title = ""
+
+    def _remember_miss(self, rel, artist="", title="", album=""):
+        payload = {
+            "ok": False,
+            "error": "no lyrics",
+            "attempted": True,
+            "name": rel,
+            "artist": artist,
+            "title": title,
+            "album": album,
+            "lines": [],
+            "hint": "Drop a matching .lrc next to the track, or fetch from Karaoke.",
+        }
         cache_path = _cache_path(rel)
         try:
-            return os.path.isfile(cache_path) and os.path.getsize(cache_path) > 8
+            os.makedirs(LYRICS_DIR, exist_ok=True)
+            tmp = cache_path + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(payload, fh, separators=(",", ":"))
+            os.replace(tmp, cache_path)
         except OSError:
-            return False
+            pass
+        with self.lock:
+            self.mem[rel] = payload
+        return payload
 
-    def lookup(self, rel, fetch=False, duration=0):
-        rel, full = _join_rel(rel)
+    def lookup(self, rel, fetch=False, duration=0, origin="local"):
+        origin = "nas" if origin == "nas" else "local"
+        rel, full = _join_rel(rel, origin=origin)
         if not full or not os.path.isfile(full):
             return {"ok": False, "error": "not found", "name": rel, "lines": []}
         if os.path.splitext(full)[1].lower() not in AUDIO_EXT:
             return {"ok": False, "error": "not found", "name": rel, "lines": []}
-        info = self._track_info(rel)
+        info = self._track_info(rel, origin=origin)
         artist = info.get("artist") or ""
         title = info.get("title") or ""
         album = info.get("album") or ""
@@ -332,20 +536,27 @@ class LyricsIndex(object):
             parsed = parse_plain(embedded)
             if parsed["lines"]:
                 return self._remember(rel, _payload("tags", parsed, False, artist, title, album, rel))
-        if fetch:
-            remote = self._fetch_lrclib(rel, full, artist, title, album, duration)
-            if remote:
-                return self._remember(rel, remote)
-        return {
-            "ok": False,
-            "error": "no lyrics",
-            "name": rel,
-            "artist": artist,
-            "title": title,
-            "album": album,
-            "lines": [],
-            "hint": "Drop a matching .lrc next to the track (MusicBee / foobar OpenLyrics style), or fetch from LRCLIB.",
-        }
+        if not fetch:
+            hit = self._cache_hit(rel)
+            if isinstance(hit, dict) and hit.get("ok") and hit.get("lines"):
+                hit["name"] = rel
+                return hit
+            return {
+                "ok": False,
+                "error": "no lyrics",
+                "name": rel,
+                "artist": artist,
+                "title": title,
+                "album": album,
+                "lines": [],
+                "hint": "Drop a matching .lrc next to the track (MusicBee / foobar OpenLyrics style), or fetch from LRCLIB.",
+            }
+        remote = self._fetch_lrclib(
+            rel, full, artist, title, album, duration, write_sidecar=(origin != "nas")
+        )
+        if remote:
+            return self._remember(rel, remote)
+        return self._remember_miss(rel, artist, title, album)
 
     def drop_name(self, rel):
         """Remove sidecar lyrics and cache JSON for this library name."""
@@ -394,9 +605,11 @@ class LyricsIndex(object):
                 data = self.mem.get(key) or {}
                 if key == rel or data.get("name") == rel:
                     self.mem.pop(key, None)
+            self.queue = [n for n in self.queue if n != rel]
+            self.queued.discard(rel)
         return removed
 
-    def _fetch_lrclib(self, rel, full, artist, title, album, duration):
+    def _fetch_lrclib(self, rel, full, artist, title, album, duration, write_sidecar=True):
         if not title:
             return None
         os.makedirs(LYRICS_DIR, exist_ok=True)
@@ -447,13 +660,15 @@ class LyricsIndex(object):
             os.replace(tmp, cache_path)
         except OSError:
             pass
-        lrc_path = os.path.splitext(full)[0] + ".lrc"
-        if synced.strip() and not os.path.isfile(lrc_path):
-            try:
-                with open(lrc_path, "w") as fh:
-                    fh.write(synced)
-            except OSError:
-                pass
+        # Never write a sidecar onto a NAS share. Cache JSON stays on this host.
+        if write_sidecar:
+            lrc_path = os.path.splitext(full)[0] + ".lrc"
+            if synced.strip() and not os.path.isfile(lrc_path):
+                try:
+                    with open(lrc_path, "w") as fh:
+                        fh.write(synced)
+                except OSError:
+                    pass
         return payload
 
     def _http_json(self, url):

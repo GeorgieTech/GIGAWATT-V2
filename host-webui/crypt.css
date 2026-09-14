@@ -922,6 +922,15 @@ input[type=range] { flex: 1; accent-color: #ffffff; height: 28px; }
 .job.done .job-stay,
 .job.fail .job-stay { color: var(--ok); }
 .job.fail .job-stay { color: var(--danger); }
+.job.lyrics-job {
+  border-color: rgba(196,92,38,0.45);
+  margin: 0 0 12px;
+}
+.job.lyrics-job .job-stay {
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
 
 .tracks { list-style: none; margin: 0; padding: 0; max-height: none; }
 .tracks li {
@@ -937,7 +946,14 @@ input[type=range] { flex: 1; accent-color: #ffffff; height: 28px; }
 .tracks li:last-child { border-bottom: 0; }
 .tracks li:hover { background: rgba(255,255,255,0.04); }
 .tracks li.on { color: #fff3d6; }
-.tracks .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 550; }
+.tracks .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 550;
+}
 .tracks .size { color: var(--muted); font-size: 12px; }
 .tracks button { padding: 8px 10px; font-size: 11px; min-height: 36px; }
 .tracks li.empty, .queue li.empty { cursor: default; grid-template-columns: 1fr; color: var(--muted); }
@@ -2002,6 +2018,13 @@ img.cover.round { border-radius: 50%; }
   gap: 12px;
   padding: 10px 4px;
   border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.tracks.browse-list .name,
+.tracks.browse-list .grow {
+  min-width: 0;
+}
+.tracks.browse-list li.nas-folder {
+  grid-template-columns: 48px minmax(0, 1fr);
 }
 .row-more { position: relative; }
 button.more-btn {
