@@ -41,8 +41,13 @@ do
   fi
 done
 if [ -n "$NASRC" ]; then
+  if grep -q ' /data/nas ' /proc/mounts 2>/dev/null; then
+    /data/opt/nas/fusermount -uz /data/nas 2>/dev/null || umount -l /data/nas 2>/dev/null || true
+  fi
+  pkill -f '/data/opt/nas/rclone' 2>/dev/null || true
+  sleep 1
   mkdir -p /data/opt/nas
-  cp -a "$NASRC"/. /data/opt/nas/
+  cp -a "$NASRC"/. /data/opt/nas/ || true
   chmod +x /data/opt/nas/rclone /data/opt/nas/fusermount /data/opt/nas/run-rclone 2>/dev/null || true
   chown -R RPM:RPM /data/opt/nas
 fi
