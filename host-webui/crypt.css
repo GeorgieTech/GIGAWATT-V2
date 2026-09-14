@@ -14,7 +14,7 @@
   --danger: #ff8a80;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bot: env(safe-area-inset-bottom, 0px);
-  --tab: 64px;
+  --tab: 84px;
   color-scheme: dark;
 }
 
@@ -1333,7 +1333,7 @@ body.follow-lock .queue li:not(.empty-state) {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 0;
-  padding: 6px 6px calc(8px + var(--safe-bot));
+  padding: 10px 8px calc(12px + var(--safe-bot));
   background: #030303;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -1360,11 +1360,11 @@ body.job-busy .tabbar::before {
   color: var(--muted);
   text-decoration: none;
   text-align: center;
-  padding: 10px 2px;
-  min-height: 44px;
-  font-size: 10px;
+  padding: 14px 4px;
+  min-height: 52px;
+  font-size: 13px;
   font-weight: 650;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   border-radius: 12px;
 }
@@ -1384,7 +1384,7 @@ body.job-busy .tabbar::before {
 @media (max-width: 420px) {
   .brand .sub { display: none; }
   .hostline { max-width: 34vw; }
-  .tabbar a { font-size: 8px; letter-spacing: 0.03em; padding: 10px 0; }
+  .tabbar a { font-size: 12px; letter-spacing: 0.04em; padding: 14px 0; }
 }
 
 .rack-card { padding-bottom: 18px; }
