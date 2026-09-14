@@ -450,7 +450,27 @@ class CryptApp(object):
             origin = snap.get("origin") or self._play_origin or "local"
             requests = dict(self.requests)
         playing_name = snap.get("name") or ""
-        if origin != "nas":
+        if origin == "nas" and playing_name:
+            artist, album, title = nasmod.parse_nas_meta(playing_name)
+            if title:
+                snap["title"] = snap.get("title") or title
+            if artist:
+                snap["artist"] = snap.get("artist") or artist
+            if album:
+                snap["album"] = snap.get("album") or album
+            if not order or playing_name not in order or len(order) < 2:
+                folder = "/".join(playing_name.replace("\\", "/").split("/")[:-1])
+                more, _capped = nasmod.list_tracks(folder, cap=300, mountpoint=NAS_DIR)
+                names = [t.get("name") for t in more if t.get("name")]
+                if names:
+                    order = names
+                    if playing_name in order:
+                        idx = order.index(playing_name)
+                    with self.lock:
+                        self._play_origin = "nas"
+                        self.order = list(order)
+                        self.index = idx
+        elif origin != "nas":
             names = [t.get("name") for t in tracks if t.get("name")]
             name_set = set(names)
             if not order or (playing_name and playing_name not in order and playing_name in name_set):
