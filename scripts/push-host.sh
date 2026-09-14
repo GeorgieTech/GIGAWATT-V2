@@ -2,7 +2,7 @@
 # Copy this checkout onto one Gigawatt host and install.
 # Usage: scripts/push-host.sh 192.168.1.142
 # SSH user is RPM. Do not put the password in this file.
-# Push this checkout onto 192.168.1.142 (currently v2.2.32).
+# Push this checkout onto 192.168.1.142 (currently v2.2.33).
 set -euo pipefail
 HOST="${1:-}"
 if [ -z "$HOST" ]; then

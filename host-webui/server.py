@@ -447,7 +447,7 @@ class CryptApp(object):
             tracks = list(self.tracks)
             order = list(self.order)
             idx = self.index
-            origin = self._play_origin or "local"
+            origin = snap.get("origin") or self._play_origin or "local"
             requests = dict(self.requests)
         playing_name = snap.get("name") or ""
         if origin != "nas":
@@ -458,9 +458,9 @@ class CryptApp(object):
             if playing_name in order:
                 idx = order.index(playing_name)
             with self.lock:
-                if self._play_origin != "nas":
-                    self.order = list(order)
-                    self.index = idx
+                self._play_origin = "local"
+                self.order = list(order)
+                self.index = idx
         queue, queue_total = self._upcoming(order, tracks, idx, 24, requests)
         eq = clamp_eq(snap.get("eq"))
         me = identity()

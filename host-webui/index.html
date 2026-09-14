@@ -11,14 +11,14 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/crypt.css">
+<link rel="stylesheet" href="/crypt.css?v=2.2.33">
 </head>
 <body class="playing-page">
 <div class="app">
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.2.32</div>
+      <div class="sub">S2 · V2.2.33</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -27,21 +27,9 @@
   </header>
   <main class="page">
     <section class="card nowcard">
-      <div class="job hidden" id="copyjob" aria-live="polite">
-        <div class="job-head">
-          <div class="job-title" id="copy-title">Copying</div>
-          <div class="job-pct" id="copy-pct">…</div>
-        </div>
-        <div class="job-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="copy-bar">
-          <div class="job-fill indeterminate" id="copy-fill"></div>
-        </div>
-        <div class="job-detail" id="copy-detail"></div>
-        <div class="job-stay" id="copy-stay">Copy-then-play — this TOSLINK waits for the file.</div>
-      </div>
       <div class="viz-wrap" id="vizwrap">
-        <canvas id="viz" aria-label="Audio reactive visualizer"></canvas>
-        <img id="coverart" alt="" hidden>
-        <audio id="tap" playsinline webkit-playsinline preload="auto"></audio>
+        <div class="cover-fallback" id="fallback" aria-hidden="true"></div>
+        <img id="coverart" alt="">
       </div>
       <div class="now-block">
         <div class="now-line">
@@ -49,10 +37,11 @@
           <div class="now" id="now">Nothing playing</div>
         </div>
         <div class="now-artist" id="nowartist">Pick a track in Library</div>
-        <div class="now-meta-row">
-          <div class="meta" id="meta">0:00 / 0:00</div>
-          <button class="ghost stop-inline" id="stopbtn" type="button">Stop</button>
-        </div>
+      </div>
+      <div class="seek-row">
+        <span class="seek-t" id="tcur">0:00</span>
+        <input id="seekbar" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek">
+        <span class="seek-t" id="tdur">0:00</span>
       </div>
       <div class="transport">
         <button class="icon" id="prevbtn" type="button" aria-label="Previous">⟨⟨</button>
@@ -63,20 +52,8 @@
         <button class="icon" id="nextbtn" type="button" aria-label="Next">⟩⟩</button>
       </div>
       <div class="vol">Volume <input id="vol" type="range" min="0" max="100" value="100"></div>
-      <div class="wave-scroll-wrap">
-        <canvas id="wscroll" aria-label="3-band waveform"></canvas>
-        <div class="wave-progress hidden" id="waveprog">
-          <div class="wave-progress-head">
-            <span id="wavestage">Analyzing waveform</span>
-            <span id="wavepct">0%</span>
-          </div>
-          <div class="wave-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="wavebar">
-            <div class="wave-progress-fill" id="wavefill"></div>
-          </div>
-        </div>
-      </div>
-      <div class="wave-over-wrap" id="seek">
-        <canvas id="wover" aria-label="Track overview"></canvas>
+      <div class="row center">
+        <button class="ghost stop-inline" id="stopbtn" type="button">Stop</button>
       </div>
       <div class="err" id="err"></div>
     </section>
@@ -97,35 +74,14 @@
   </nav>
 </div>
 <script>
-// Flip to true to show the Playing-page waveform UI again (engine keeps running either way).
-const WAVEFORM_VISIBLE = false;
 const $ = (id) => document.getElementById(id);
-if (!WAVEFORM_VISIBLE) document.body.classList.add("waveform-ui-hidden");
 let last = {};
-let viz = {
-  seed: 1,
-  clock: 0,
-  lastTs: 0,
-  raf: 0,
-  vol: 1,
-  mode: "idle",
-  bars: null,
-  bass: 0,
-  mid: 0,
-  treble: 0,
-  sparks: null,
-  live: false
-};
-const tap = {
-  audio: $("tap"),
-  ctx: null,
-  analyser: null,
-  freq: null,
-  src: null,
-  gain: null,
-  name: "",
-  ok: false
-};
+let lastAt = 0;
+let seekUser = false;
+let volUser = false;
+let volPending = null;
+let volBusy = false;
+let tickBusy = false;
 
 function fmt(sec) {
   sec = Math.max(0, sec || 0);
@@ -133,28 +89,13 @@ function fmt(sec) {
   const s = Math.floor(sec % 60);
   return m + ":" + String(s).padStart(2, "0");
 }
-function fmt3(sec) {
-  sec = Math.max(0, sec || 0);
-  const m = Math.floor(sec / 60);
-  const s = sec - m * 60;
-  return m + ":" + s.toFixed(3).padStart(6, "0");
-}
 function esc(s) {
   return String(s || "").replace(/[&<>"']/g, (c) => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
   }[c]));
 }
 function titleOf(name) {
   return String(name || "").replace(/\.[^.]+$/, "").replace(/[_]+/g, " ");
-}
-function hashName(s) {
-  let h = 2166136261;
-  const t = String(s || "crypt");
-  for (let i = 0; i < t.length; i++) {
-    h ^= t.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0) || 1;
 }
 async function api(path, body) {
   const opt = body === undefined ? { method: "POST" } : {
@@ -165,1106 +106,41 @@ async function api(path, body) {
   const r = await fetch(path, opt);
   return r.json();
 }
-function unlockAudio() {
-  if (!tap.audio) return false;
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return false;
-  if (!tap.ctx) {
-    tap.ctx = new AC();
-    tap.fft = tap.ctx.createAnalyser();
-    tap.fft.fftSize = 1024;
-    tap.fft.smoothingTimeConstant = 0.68;
-    tap.freq = new Uint8Array(tap.fft.frequencyBinCount);
-    tap.waveN = tap.ctx.createAnalyser();
-    tap.waveN.fftSize = 2048;
-    tap.waveN.smoothingTimeConstant = 0.12;
-    tap.wave = new Float32Array(tap.waveN.fftSize);
-    tap.gain = tap.ctx.createGain();
-    tap.gain.gain.value = 0;
-    tap.src = tap.ctx.createMediaElementSource(tap.audio);
-    tap.src.connect(tap.fft);
-    tap.src.connect(tap.waveN);
-    tap.fft.connect(tap.gain);
-    tap.gain.connect(tap.ctx.destination);
-  }
-  if (tap.ctx.state === "suspended") tap.ctx.resume();
-  return true;
-}
-function mediaUrl(name) {
-  return "/api/media?name=" + encodeURIComponent(name);
-}
-function syncTap(p, playing) {
-  if (!tap.audio) return;
-  const browser = (last.output || "jack") === "browser";
-  const airplay = !!(last.airplay || {}).active;
-  if (browser) unlockAudio();
-  if (tap.gain) {
-    const vol = ((last.volume == null ? 100 : last.volume) / 100);
-    tap.gain.gain.value = (browser && !airplay) ? vol : 0;
-  }
-  if (airplay || !p || !p.name) {
-    tap.name = "";
-    tap.ok = false;
-    try { tap.audio.pause(); } catch (e) {}
-    return;
-  }
-  unlockAudio();
-  if (tap.name !== p.name) {
-    tap.name = p.name;
-    tap.ok = false;
-    tap.audio.src = mediaUrl(p.name);
-    try { tap.audio.load(); } catch (e) {}
-  }
-  if (!browser) {
-    const ck = p.clock || {};
-    const pos = (ck.heard != null ? ck.heard : p.position) || 0;
-    try {
-      if (Math.abs((tap.audio.currentTime || 0) - pos) > 0.12) {
-        tap.audio.currentTime = pos;
-      }
-    } catch (e) {}
-  }
-  if (playing) {
-    const pr = tap.audio.play();
-    if (pr && pr.catch) pr.catch(function () {});
-  } else {
-    try { tap.audio.pause(); } catch (e) {}
-  }
-}
-let libByName = {};
-let libAt = 0;
-let copyBusy = false;
-let copyTimer = 0;
-let copyHide = 0;
-let copyStarted = 0;
-
-function isRemote(t) {
-  if (!t) return false;
-  if (t.local === false) return true;
-  if (t.here === false && t.local !== true) return true;
-  return false;
-}
-function copyStamp(t) {
-  return (t && (t.home_stamp || t.owner)) || "shelf";
-}
-async function ensureLib(force) {
-  const now = Date.now();
-  if (!force && now - libAt < 12000 && Object.keys(libByName).length) return;
-  function ingest(lib) {
-    const map = {};
-    (lib.tracks || []).forEach((t) => { if (t && t.name) map[t.name] = t; });
-    if (!Object.keys(map).length) return;
-    libByName = map;
-    libAt = Date.now();
-  }
-  try {
-    const local = await fetch("/api/library?local=1").then((r) => r.json());
-    ingest(local);
-  } catch (e) {}
-  try {
-    const lib = await fetch("/api/library").then((r) => r.json());
-    ingest(lib);
-  } catch (e) {}
-}
-function paintCopyJob(pct, title, detail, stay, state) {
-  const el = $("copyjob");
-  if (!el) return;
-  const n = Math.max(0, Math.min(100, Math.round(pct)));
-  $("copy-title").textContent = title;
-  $("copy-pct").textContent = state === "wait" ? "…" : (n + "%");
-  $("copy-fill").style.width = n + "%";
-  $("copy-fill").classList.toggle("indeterminate", state === "wait");
-  $("copy-bar").setAttribute("aria-valuenow", String(n));
-  $("copy-detail").textContent = detail || "";
-  $("copy-stay").textContent = stay;
-  el.classList.toggle("done", state === "done");
-  el.classList.toggle("fail", state === "fail");
-}
-function showCopyJob(stamp, track) {
-  const el = $("copyjob");
-  if (!el) return;
-  if (copyHide) { clearTimeout(copyHide); copyHide = 0; }
-  copyBusy = true;
-  copyStarted = Date.now();
-  el.classList.remove("hidden", "done", "fail");
-  const label = track ? (track.title || titleOf(track.name)) : "";
-  paintCopyJob(8, "Copying", "Copying from " + stamp + (label ? (" · " + label) : "") + "…", "Copy-then-play — this TOSLINK waits for the file.", "wait");
-  if (copyTimer) clearInterval(copyTimer);
-  copyTimer = setInterval(() => {
-    if (!copyBusy) return;
-    const sec = (Date.now() - copyStarted) / 1000;
-    const pct = Math.min(88, 8 + sec * 10);
-    paintCopyJob(pct, "Copying", $("copy-detail").textContent, "Copy-then-play — this TOSLINK waits for the file.", "wait");
-  }, 400);
-}
-function finishCopyJob(ok, detail) {
-  copyBusy = false;
-  if (copyTimer) { clearInterval(copyTimer); copyTimer = 0; }
-  const el = $("copyjob");
-  if (!el) return;
-  paintCopyJob(100, ok ? "Ready" : "Failed", detail || (ok ? "Playing from this host." : "could not copy from shelf"), ok ? "Complete." : "Finished with errors.", ok ? "done" : "fail");
-  copyHide = setTimeout(() => {
-    if (!copyBusy) el.classList.add("hidden");
-  }, ok ? 1600 : 8000);
-}
-async function withCopyFeedback(track, requestFn) {
-  const remote = isRemote(track);
-  let shown = remote;
-  let late = 0;
-  if (remote) showCopyJob(copyStamp(track), track);
-  else {
-    late = setTimeout(() => {
-      if (track && isRemote(track)) {
-        shown = true;
-        showCopyJob(copyStamp(track), track);
-      }
-    }, 400);
-  }
-  try {
-    const res = await requestFn();
-    if (late) clearTimeout(late);
-    if (shown) {
-      if (res && res.ok === false) finishCopyJob(false, res.error || "could not copy from shelf");
-      else finishCopyJob(true, track ? (track.title || titleOf(track.name)) : "");
-    }
-    return res;
-  } catch (e) {
-    if (late) clearTimeout(late);
-    if (shown) finishCopyJob(false, "Host is not answering");
-    throw e;
-  }
-}
-async function toggle() {
-  unlockAudio();
+function posNow() {
   const p = last.player || {};
-  if (p.playing) await api("/api/pause");
-  else if (p.paused) await api("/api/resume");
-  else if (p.name) {
-    await ensureLib();
-    await withCopyFeedback(libByName[p.name], () => api("/api/play", { name: p.name }));
-  } else if ((last.count || 0) > 0) {
-    await ensureLib();
-    const nxt = (last.queue || [])[0];
-    await withCopyFeedback(nxt && libByName[nxt.name], () => api("/api/next"));
-  }
-  tick();
-}
-async function playName(name) {
-  unlockAudio();
-  await ensureLib();
-  await withCopyFeedback(libByName[name], () => api("/api/play", { name: name }));
-  tick();
-}
-async function goPrev() {
-  unlockAudio();
-  await api("/api/prev");
-  tick();
-}
-async function goNext() {
-  unlockAudio();
-  await ensureLib();
-  const nxt = (last.queue || [])[0];
-  await withCopyFeedback(nxt && libByName[nxt.name], () => api("/api/next"));
-  tick();
-}
-async function goStop() {
-  await api("/api/stop");
-  tick();
-}
-if ($("prevbtn")) $("prevbtn").onclick = goPrev;
-if ($("nextbtn")) $("nextbtn").onclick = goNext;
-if ($("stopbtn")) $("stopbtn").onclick = goStop;
-if ($("playbtn")) $("playbtn").onclick = toggle;
-let volUser = false;
-let volPending = null;
-let volBusy = false;
-function setVol(n) {
-  n = Math.max(0, Math.min(100, Number(n)));
-  viz.vol = n / 100;
-  if (tap.gain && (last.output || "jack") === "browser") tap.gain.gain.value = n / 100;
-  volPending = n;
-  pumpVol();
-}
-function pumpVol() {
-  if (volBusy || volPending == null) return;
-  const n = volPending;
-  volPending = null;
-  volBusy = true;
-  api("/api/volume", { n: n }).finally(() => {
-    volBusy = false;
-    if (volPending != null) pumpVol();
-  });
-}
-$("vol").addEventListener("input", (e) => setVol(e.target.value));
-$("vol").addEventListener("change", (e) => setVol(e.target.value));
-$("vol").addEventListener("pointerdown", () => { volUser = true; });
-$("vol").addEventListener("pointerup", () => { volUser = false; });
-$("vol").addEventListener("pointercancel", () => { volUser = false; });
-$("vol").addEventListener("touchstart", () => { volUser = true; }, { passive: true });
-$("vol").addEventListener("touchend", () => { volUser = false; });
-
-function seekTo(t) {
-  if ((last.output || "jack") === "browser" && tap.audio) {
-    try { tap.audio.currentTime = t; } catch (e) {}
-  }
-  return api("/api/seek", { seconds: t }).then(tick);
-}
-$("seek").addEventListener("click", (e) => {
-  const p = last.player || {};
-  if (!p.duration) return;
-  const r = e.currentTarget.getBoundingClientRect();
-  const t = ((e.clientX - r.left) / r.width) * p.duration;
-  seekTo(t);
-});
-$("zoom-in").addEventListener("click", (e) => { e.stopPropagation(); nudgeZoom(-1); });
-$("zoom-out").addEventListener("click", (e) => { e.stopPropagation(); nudgeZoom(1); });
-$("wscroll").addEventListener("wheel", (e) => {
-  e.preventDefault();
-  nudgeZoom(e.deltaY > 0 ? 1 : -1);
-}, { passive: false });
-$("wscroll").addEventListener("click", (e) => {
-  const dur = playClock.duration || 0;
-  if (!dur || !rw.n) return;
-  const r = e.currentTarget.getBoundingClientRect();
-  const x = (e.clientX - r.left) / r.width;
-  const win = zoomWindow();
-  const pos = nowPos() - win * 0.34 + x * win;
-  seekTo(Math.max(0, Math.min(dur, pos)));
-});
-let pinch0 = 0, pinchZoom = 10;
-$("wscroll").addEventListener("touchstart", (e) => {
-  if (e.touches.length === 2) {
-    const a = e.touches[0], b = e.touches[1];
-    pinch0 = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-    pinchZoom = zoomWindow();
-  }
-}, { passive: true });
-$("wscroll").addEventListener("touchmove", (e) => {
-  if (e.touches.length !== 2 || !pinch0) return;
-  const a = e.touches[0], b = e.touches[1];
-  const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-  setZoomSec(pinchZoom * (pinch0 / Math.max(8, d)));
-}, { passive: true });
-let playClock = {
-  at: 0, heard: 0, playback: 0, pos: 0, playing: false, duration: 0, name: "",
-  latency_ms: 0, buffer_ms: 0, sink_ms: 0, paplay_ms: 90, locked: false,
-  jitter_ms: 0, ppm: 0, rate: 96000, phase: "idle"
-};
-let clockDomAt = 0;
-function applyClockSample(ck, p, snap) {
-  const now = performance.now();
-  const playing = !!p.playing;
-  const name = p.name || "";
-  const heard = (ck.heard != null ? ck.heard : p.position) || 0;
-  const playback = (ck.playback != null ? ck.playback : p.playback) || heard;
+  const base = p.position || 0;
   const dur = p.duration || 0;
-  const next = {
-    at: now,
-    heard: heard,
-    playback: playback,
-    pos: heard,
-    playing: playing,
-    duration: dur,
-    name: name,
-    latency_ms: ck.latency_ms || 0,
-    buffer_ms: ck.buffer_ms || 0,
-    sink_ms: ck.sink_ms || 0,
-    paplay_ms: ck.paplay_ms || 90,
-    locked: !!ck.locked,
-    jitter_ms: ck.jitter_ms || 0,
-    ppm: ck.ppm || 0,
-    rate: ck.rate || 48000,
-    phase: ck.phase || (playing && ck.locked ? "locked" : playing ? "locking" : name ? "frozen" : "idle")
-  };
-  const same = playClock.name === name && playClock.playing && playing;
-  if (same && !snap) {
-    const predH = nowClock("heard");
-    const predP = nowClock("playback");
-    const errH = heard - predH;
-    const errP = playback - predP;
-    if (Math.abs(errH) < 0.28 && Math.abs(errP) < 0.28) {
-      next.heard = predH + errH * 0.16;
-      next.playback = predP + errP * 0.16;
-      next.pos = next.heard;
-    }
-  }
-  playClock = next;
+  if (!p.playing) return Math.min(dur || base, base);
+  const t = base + (Date.now() - lastAt) / 1000;
+  return dur ? Math.min(dur, t) : t;
 }
-let rw = { name: "", n: 0, l: [], m: [], h: [], grid: null, dur: 0, analyzing: false, fetching: false, timer: 0, zoomSec: 10, progress: 0, stage: "", progTimer: 0 };
-const ZOOM_STEPS = [2, 3, 4, 6, 8, 10, 12, 16, 24, 32, 48];
-function zoomWindow() {
-  const dur = playClock.duration || 12;
-  const z = rw.zoomSec || 10;
-  return Math.max(2, Math.min(Math.max(2, dur), z));
-}
-function setZoomSec(sec) {
-  const dur = playClock.duration || 48;
-  rw.zoomSec = Math.max(2, Math.min(Math.min(48, dur), sec));
-  const lab = $("zoom-sec");
-  if (lab) lab.textContent = Math.round(rw.zoomSec) + "s";
-}
-function nudgeZoom(dir) {
-  const cur = zoomWindow();
-  let idx = 0;
-  for (let i = 0; i < ZOOM_STEPS.length; i++) {
-    if (ZOOM_STEPS[i] <= cur + 0.05) idx = i;
-  }
-  idx = Math.max(0, Math.min(ZOOM_STEPS.length - 1, idx + dir));
-  setZoomSec(ZOOM_STEPS[idx]);
-}
-function nowPos() {
-  return nowClock("heard");
-}
-function nowClock(field) {
-  const base = playClock[field] != null ? playClock[field] : (playClock.pos || 0);
-  if (!playClock.playing) return base || 0;
-  const p = base + (performance.now() - playClock.at) / 1000;
-  return Math.max(0, Math.min(playClock.duration || p, p));
-}
-function paintClockStats(heard, playback, force) {
-  if (!$("clk-heard")) return;
-  const now = performance.now();
-  if (!force && now - clockDomAt < 90) return;
-  clockDomAt = now;
-  const apOn = !!(last.airplay || {}).active;
-  const jack = !apOn && (last.output || "jack") === "jack";
-  $("clk-heard").textContent = fmt3(jack ? heard : 0);
-  $("clk-play").textContent = fmt3(jack ? playback : 0);
-  const off = jack ? Math.max(0, Math.round((playback - heard) * 1000)) : 0;
-  const delta = $("clk-off");
-  const lab = $("clk-off-l");
-  if (apOn) {
-    delta.textContent = "—";
-    delta.className = "clk-delta";
-    lab.textContent = "Time Clock is for Library tracks";
-  } else if (!playClock.name) {
-    delta.textContent = "—";
-    delta.className = "clk-delta";
-    lab.textContent = "Time Clock vs playback";
-  } else if (off <= 20) {
-    delta.textContent = "in sync";
-    delta.className = "clk-delta sync";
-    lab.textContent = "Time Clock matches playback";
-  } else {
-    delta.textContent = off + " ms";
-    delta.className = "clk-delta";
-    lab.textContent = "behind playback";
-  }
-  const lock = $("clk-lock");
-  const phase = jack ? (playClock.phase || "idle") : "idle";
-  const kinds = { locked: "lock", locking: "loose", warmup: "warm", frozen: "loose", idle: "loose" };
-  lock.textContent = phase;
-  lock.className = kinds[phase] || "loose";
-  const win = Math.max(600, off * 1.8, 1);
-  const gap = off / win;
-  const start = (1 - gap) * 0.5;
-  const end = start + gap;
-  const span = $("clk-span");
-  const mh = $("clk-mark-h");
-  const mp = $("clk-mark-p");
-  if (span && mh && mp) {
-    const left = (start * 100).toFixed(2);
-    const width = Math.max(0.8, gap * 100).toFixed(2);
-    span.style.left = left + "%";
-    span.style.width = width + "%";
-    mh.style.left = "calc(" + left + "% - 2px)";
-    mp.style.left = "calc(" + (end * 100).toFixed(2) + "% - 3px)";
-  }
-  const rate = playClock.rate || 96000;
-  const jit = playClock.jitter_ms || 0;
-  const ppm = playClock.ppm || 0;
-  if ($("clk-rate")) $("clk-rate").textContent = jack ? ((rate / 1000).toFixed(3) + " kHz") : "—";
-  if ($("clk-jit")) $("clk-jit").textContent = jack && playClock.name ? jit.toFixed(2) + " ms" : "—";
-  if ($("clk-ppm")) {
-    $("clk-ppm").textContent = jack && playClock.playing
-      ? (ppm >= 0 ? "+" : "") + ppm.toFixed(1) + " ppm"
-      : "—";
-  }
-  const buf = playClock.buffer_ms || 0;
-  const sink = playClock.sink_ms || 0;
-  const pap = playClock.paplay_ms || 90;
-  if (apOn) {
-    $("clk-note").textContent = "AirPlay does not use Host Time Clock. Play a Library track on this TOSLINK.";
-  } else if (playClock.name) {
-    $("clk-note").textContent = "Path delay " + off + " ms · buffer " + Math.round(buf) + " ms · TOSLINK " + Math.round(sink) + " ms · paplay " + pap + " ms";
-  } else {
-    $("clk-note").textContent = "Cream is Time Clock (what TOSLINK is emitting). Ember is decoder playback.";
+function paintSeek() {
+  const p = last.player || {};
+  const dur = p.duration || 0;
+  const pos = posNow();
+  $("tcur").textContent = fmt(pos);
+  $("tdur").textContent = fmt(dur);
+  if (!seekUser) {
+    $("seekbar").value = dur > 0 ? String(Math.round((pos / dur) * 1000)) : "0";
   }
 }
-function showWaveProgress(on, pct, stage) {
-  const el = $("waveprog");
-  if (!el) return;
-  if (rw.progTimer) {
-    clearTimeout(rw.progTimer);
-    rw.progTimer = 0;
-  }
-  if (!on) {
-    el.classList.add("hidden");
-    el.classList.remove("done");
-    return;
-  }
-  const n = Math.max(0, Math.min(100, Math.round(pct || 0)));
-  el.classList.remove("hidden");
-  el.classList.toggle("done", stage === "Complete" || n >= 100);
-  $("wavestage").textContent = stage || "Analyzing waveform";
-  $("wavepct").textContent = n + "%";
-  $("wavefill").style.width = n + "%";
-  $("wavebar").setAttribute("aria-valuenow", String(n));
-}
-function loadWave(name) {
-  if (!name) {
-    if (rw.timer) clearTimeout(rw.timer);
-    rw.timer = 0;
-    rw.name = "";
-    rw.n = 0;
-    rw.l = []; rw.m = []; rw.h = [];
-    rw.grid = null;
-    rw.dur = 0;
-    setWaveBpm(null);
-    rw.analyzing = false;
-    rw.fetching = false;
-    rw.progress = 0;
-    showWaveProgress(false);
-    return;
-  }
-  if (rw.name === name && rw.n) return;
-  if (rw.name === name && (rw.fetching || rw.timer)) return;
-  if (rw.name !== name) {
-    if (rw.timer) clearTimeout(rw.timer);
-    rw.timer = 0;
-    rw.name = name;
-    rw.n = 0;
-    rw.l = []; rw.m = []; rw.h = [];
-    rw.grid = null;
-    rw.dur = 0;
-    setWaveBpm(null);
-    rw.analyzing = true;
-    rw.progress = 0;
-    rw.stage = "Starting";
-    showWaveProgress(true, 1, "Starting");
-  }
-  rw.fetching = true;
-  fetch("/api/wave?name=" + encodeURIComponent(name)).then((r) => r.json()).then((data) => {
-    if (rw.name !== name) return;
-    if (data && data.ok && data.l && data.l.length) {
-      rw.l = data.l; rw.m = data.m; rw.h = data.h;
-      rw.n = data.n || data.l.length;
-      rw.grid = data.grid || null;
-      rw.dur = data.dur || 0;
-      if (rw.dur && !playClock.duration) playClock.duration = rw.dur;
-      setWaveBpm(rw.grid);
-      rw.analyzing = false;
-      rw.progress = 100;
-      if (rw.timer) clearTimeout(rw.timer);
-      rw.timer = 0;
-      showWaveProgress(true, 100, "Complete");
-      rw.progTimer = setTimeout(() => showWaveProgress(false), 1400);
-    } else if (data && data.analyzing) {
-      rw.analyzing = true;
-      rw.progress = data.progress || 0;
-      rw.stage = data.stage || "Analyzing waveform";
-      showWaveProgress(true, rw.progress, rw.stage);
-      if (rw.timer) clearTimeout(rw.timer);
-      rw.timer = setTimeout(() => {
-        rw.timer = 0;
-        if (rw.name === name) loadWave(name);
-      }, 500);
-    } else {
-      rw.analyzing = false;
-      if (rw.timer) clearTimeout(rw.timer);
-      rw.timer = 0;
-      showWaveProgress(false);
-    }
-  }).catch(() => {
-    if (rw.name === name) {
-      rw.analyzing = false;
-      if (rw.timer) clearTimeout(rw.timer);
-      rw.timer = 0;
-      showWaveProgress(false);
-    }
-  }).finally(() => {
-    if (rw.name === name) rw.fetching = false;
-  });
-}
-function loadCover(name) {
+function showCover(st, name) {
   const wrap = $("vizwrap");
   const img = $("coverart");
-  if (!wrap || !img) return;
-  const data = last.cover || {};
-  if (name && data.name === name && data.found && data.url) {
+  const fb = $("fallback");
+  const cover = st.cover || {};
+  if (name && cover.found && cover.url && (!cover.name || cover.name === name)) {
     wrap.classList.add("has-cover");
     img.removeAttribute("hidden");
-    img.hidden = false;
-    if (img.getAttribute("src") !== data.url) img.src = data.url;
-    // Hide canvas via CSS; stop viz RAF for GPU idle. Playhead RAF stays independent.
-    stopViz();
-    startPlayhead();
+    if (img.getAttribute("src") !== cover.url) img.src = cover.url;
+    fb.textContent = "";
     return;
   }
   wrap.classList.remove("has-cover");
-  img.hidden = true;
   img.removeAttribute("src");
-  startViz();
-  startPlayhead();
-}
-$("viz").addEventListener("click", () => { unlockAudio(); toggle(); });
-if ($("coverart")) $("coverart").addEventListener("click", () => { unlockAudio(); toggle(); });
-document.addEventListener("pointerdown", unlockAudio);
-tap.audio.addEventListener("playing", () => { tap.ok = true; });
-tap.audio.addEventListener("error", () => { tap.ok = false; });
-
-function sizeViz() {
-  const c = $("viz");
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = c.clientWidth || 320;
-  const h = c.clientHeight || 200;
-  const tw = Math.max(1, Math.floor(w * dpr));
-  const th = Math.max(1, Math.floor(h * dpr));
-  if (c.width !== tw) c.width = tw;
-  if (c.height !== th) c.height = th;
-}
-
-function fftLevels(nBars) {
-  if (!tap.fft || !tap.freq || !tap.ok) return null;
-  tap.fft.getByteFrequencyData(tap.freq);
-  const n = tap.freq.length;
-  let energy = 0;
-  const out = new Float32Array(nBars);
-  const minB = 1;
-  const usable = Math.max(1, n - minB);
-  for (let i = 0; i < nBars; i++) {
-    const a = minB + Math.floor(Math.pow(i / nBars, 1.55) * usable);
-    const b = minB + Math.floor(Math.pow((i + 1) / nBars, 1.55) * usable);
-    const lo = Math.min(a, n - 1);
-    const hi = Math.max(lo + 1, Math.min(n, b));
-    let s = 0;
-    for (let k = lo; k < hi; k++) s += tap.freq[k];
-    const v = (s / (hi - lo)) / 255;
-    out[i] = v;
-    energy += v;
-  }
-  return out;
-}
-
-function waveRibbon(outN) {
-  if (!tap.waveN || !tap.wave || !tap.ok) return null;
-  tap.waveN.getFloatTimeDomainData(tap.wave);
-  const n = tap.wave.length;
-  const out = new Float32Array(outN);
-  const step = n / outN;
-  for (let i = 0; i < outN; i++) {
-    const a = Math.floor(i * step);
-    const b = Math.min(n, Math.floor((i + 1) * step));
-    let peak = 0;
-    for (let k = a; k < b; k++) {
-      const v = Math.abs(tap.wave[k] || 0);
-      if (v > peak) peak = v;
-    }
-    out[i] = peak;
-  }
-  return out;
-}
-
-function drawViz(ts) {
-  viz.raf = requestAnimationFrame(drawViz);
-  const c = $("viz");
-  const ctx = c.getContext("2d");
-  if (!ctx) return;
-  sizeViz();
-  const w = c.width;
-  const h = c.height;
-  const dt = viz.lastTs ? Math.min(0.05, (ts - viz.lastTs) / 1000) : 0.016;
-  viz.lastTs = ts;
-  if (viz.mode === "play") viz.clock += dt;
-  else if (viz.mode === "idle") viz.clock += dt * 0.22;
-  else viz.clock += dt * 0.04;
-
-  const bars = 64;
-  if (!viz.bars || viz.bars.length !== bars) viz.bars = new Float32Array(bars);
-  const live = fftLevels(bars);
-  viz.live = !!live && viz.mode === "play";
-  const seed = viz.seed;
-  const t = viz.clock;
-  let energy = 0.08;
-  let bassAcc = 0;
-  let midAcc = 0;
-  let trebleAcc = 0;
-  for (let i = 0; i < bars; i++) {
-    let target;
-    if (live) {
-      target = Math.pow(live[i], 0.82);
-    } else if (viz.mode === "pause") {
-      target = viz.bars[i] * 0.988;
-    } else {
-      const mid = (bars - 1) / 2;
-      const envelope = 1 - Math.abs(i - mid) / mid * 0.55;
-      const n1 = 0.5 + 0.5 * Math.sin(t * (0.9 + (seed % 7) * 0.09) + i * 0.28);
-      const n2 = 0.5 + 0.5 * Math.sin(t * (1.7 + (i % 11) * 0.08) + seed * 0.008 + i * 0.17);
-      const n3 = 0.5 + 0.5 * Math.sin(t * 0.35 + i * 0.51 + seed);
-      target = (0.22 + 0.62 * n1 * n2 + 0.22 * n3) * envelope * (viz.mode === "play" ? 0.85 : 0.48);
-    }
-    const mix = live ? 0.38 : 0.18;
-    viz.bars[i] = viz.bars[i] * (1 - mix) + target * mix;
-    energy += viz.bars[i];
-    if (i < bars * 0.18) bassAcc += viz.bars[i];
-    else if (i < bars * 0.55) midAcc += viz.bars[i];
-    else trebleAcc += viz.bars[i];
-  }
-  energy = Math.max(0.05, Math.min(1, energy / bars * (live ? 2.35 : 1.15)));
-  const bassT = Math.min(1, (bassAcc / (bars * 0.18)) * (live ? 2.1 : 1.2));
-  const midT = Math.min(1, (midAcc / (bars * 0.37)) * (live ? 2.0 : 1.1));
-  const trebleT = Math.min(1, (trebleAcc / (bars * 0.45)) * (live ? 2.2 : 1.0));
-  viz.bass += (bassT - viz.bass) * 0.28;
-  viz.mid += (midT - viz.mid) * 0.24;
-  viz.treble += (trebleT - viz.treble) * 0.3;
-  const playMul = viz.mode === "play" ? 1 : viz.mode === "pause" ? 0.55 : 0.35;
-  const spin = t * (0.18 + viz.bass * 0.55 * playMul) + (seed % 97) * 0.01;
-
-  const cx = w * 0.5;
-  const cy = h * 0.52;
-  const R = Math.min(w, h) * 0.42;
-
-  ctx.clearRect(0, 0, w, h);
-
-  // 1) Atmospheric charcoal field — ember wash breathes with bass.
-  const bg = ctx.createLinearGradient(0, 0, w * 0.15, h);
-  bg.addColorStop(0, "#0a0809");
-  bg.addColorStop(0.4, "#12100f");
-  bg.addColorStop(1, "#050404");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, w, h);
-
-  const washX = cx + Math.sin(t * 0.23) * w * 0.08;
-  const washY = cy + Math.cos(t * 0.17) * h * 0.06;
-  const wash = ctx.createRadialGradient(washX, washY, R * 0.05, washX, washY, R * 1.55);
-  wash.addColorStop(0, "rgba(255,43,43," + (0.14 + viz.bass * 0.28 * playMul) + ")");
-  wash.addColorStop(0.35, "rgba(196,92,38," + (0.09 + viz.mid * 0.14) + ")");
-  wash.addColorStop(0.7, "rgba(243,230,200," + (0.035 + energy * 0.05) + ")");
-  wash.addColorStop(1, "rgba(5,4,4,0)");
-  ctx.fillStyle = wash;
-  ctx.fillRect(0, 0, w, h);
-
-  // Soft vignette so the square hero feels full-bleed.
-  const vig = ctx.createRadialGradient(cx, cy, R * 0.55, cx, cy, Math.max(w, h) * 0.72);
-  vig.addColorStop(0, "rgba(0,0,0,0)");
-  vig.addColorStop(1, "rgba(0,0,0,0.55)");
-  ctx.fillStyle = vig;
-  ctx.fillRect(0, 0, w, h);
-
-  // 2) Vinyl / groove rings — concentric arcs that expand with bass.
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(spin * 0.35);
-  const rings = 7;
-  for (let r = 0; r < rings; r++) {
-    const u = (r + 1) / rings;
-    const pulse = 1 + viz.bass * 0.08 * Math.sin(t * (1.2 + r * 0.15) + r);
-    const radius = R * (0.22 + u * 0.78) * pulse;
-    const a = 0.14 + (1 - u) * 0.28 + viz.mid * 0.16 * playMul;
-    ctx.beginPath();
-    ctx.arc(0, 0, radius, 0, Math.PI * 2);
-    ctx.strokeStyle = r % 2
-      ? "rgba(243,230,200," + (a * 0.7).toFixed(3) + ")"
-      : "rgba(255,43,43," + (a * 0.9).toFixed(3) + ")";
-    ctx.lineWidth = Math.max(1.2, (r === rings - 1 ? 2.6 : 1.4) * (w / 420));
-    ctx.stroke();
-  }
-  // Hub
-  const hub = ctx.createRadialGradient(0, 0, 2, 0, 0, R * 0.16);
-  hub.addColorStop(0, "rgba(243,230,200," + (0.35 + energy * 0.25) + ")");
-  hub.addColorStop(0.45, "rgba(255,43,43," + (0.22 + viz.bass * 0.2) + ")");
-  hub.addColorStop(1, "rgba(18,18,18,0)");
-  ctx.fillStyle = hub;
-  ctx.beginPath();
-  ctx.arc(0, 0, R * 0.18, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  // 3) Radial spectrum spokes — mirrored hi-fi scope.
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(spin);
-  for (let i = 0; i < bars; i++) {
-    const amp = Math.max(0.03, viz.bars[i]);
-    const ang = (i / bars) * Math.PI * 2;
-    const inner = R * (0.2 + viz.bass * 0.04);
-    const outer = inner + amp * R * (0.55 + viz.treble * 0.2);
-    const x0 = Math.cos(ang) * inner;
-    const y0 = Math.sin(ang) * inner;
-    const x1 = Math.cos(ang) * outer;
-    const y1 = Math.sin(ang) * outer;
-    const g = ctx.createLinearGradient(x0, y0, x1, y1);
-    const warm = i / bars;
-    if (warm < 0.33) {
-      g.addColorStop(0, "rgba(90,20,16,0.22)");
-      g.addColorStop(1, "rgba(255,43,43," + (0.45 + amp * 0.5) + ")");
-    } else if (warm < 0.66) {
-      g.addColorStop(0, "rgba(80,40,20,0.18)");
-      g.addColorStop(1, "rgba(224,122,58," + (0.38 + amp * 0.45) + ")");
-    } else {
-      g.addColorStop(0, "rgba(60,50,40,0.14)");
-      g.addColorStop(1, "rgba(243,230,200," + (0.32 + amp * 0.5) + ")");
-    }
-    ctx.strokeStyle = g;
-    ctx.lineWidth = Math.max(1.5, (w / 340) * (1.6 + amp));
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(x1, y1);
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  // Outer energy ring
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(-spin * 0.6);
-  ctx.beginPath();
-  const ringR = R * (0.98 + viz.bass * 0.06);
-  for (let i = 0; i <= bars; i++) {
-    const idx = i % bars;
-    const amp = viz.bars[idx];
-    const ang = (i / bars) * Math.PI * 2;
-    const rr = ringR * (0.92 + amp * 0.14);
-    const x = Math.cos(ang) * rr;
-    const y = Math.sin(ang) * rr;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
-  ctx.strokeStyle = "rgba(243,230,200," + (0.18 + energy * 0.28 * playMul) + ")";
-  ctx.lineWidth = Math.max(1.5, w / 280);
-  ctx.stroke();
-  ctx.restore();
-
-  // 4) Equator waveform ribbon (live tap when available).
-  const ribbonN = Math.max(48, Math.floor(w / 6));
-  const ribbon = waveRibbon(ribbonN);
-  ctx.save();
-  ctx.beginPath();
-  const yBase = cy;
-  const ampY = h * (0.07 + viz.mid * 0.08);
-  for (let i = 0; i < ribbonN; i++) {
-    const x = (i / (ribbonN - 1)) * w;
-    let y;
-    if (ribbon && viz.mode === "play") {
-      y = yBase
-        + Math.sin(i * 0.35 + t * 4) * ampY * 0.15
-        + (ribbon[i] * (i % 2 ? 1 : -1)) * ampY * (1.2 + viz.bass);
-    } else {
-      const bi = Math.floor((i / ribbonN) * bars) % bars;
-      y = yBase
-        + Math.sin(i * 0.22 + t * (1.4 + viz.bass)) * ampY * (0.35 + viz.bars[bi])
-        + Math.sin(i * 0.07 + t * 0.6) * ampY * 0.35;
-    }
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.strokeStyle = "rgba(243,230,200," + (0.45 + energy * 0.35 * playMul) + ")";
-  ctx.lineWidth = Math.max(1.5, w / 320);
-  ctx.shadowColor = "rgba(255,43,43,0.25)";
-  ctx.shadowBlur = 8 + energy * 10;
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.restore();
-
-  // 5) Orbiting ember sparks — sparse, intentional.
-  const sparkN = 14;
-  if (!viz.sparks || viz.sparks.length !== sparkN) {
-    viz.sparks = [];
-    for (let i = 0; i < sparkN; i++) {
-      viz.sparks.push({
-        a: (i / sparkN) * Math.PI * 2 + (seed % 13) * 0.1,
-        r: 0.55 + (i % 5) * 0.08,
-        s: 0.4 + (i % 7) * 0.12,
-        size: 1.2 + (i % 3)
-      });
-    }
-  }
-  ctx.save();
-  ctx.translate(cx, cy);
-  for (let i = 0; i < sparkN; i++) {
-    const sp = viz.sparks[i];
-    const ang = sp.a + t * sp.s * (0.35 + viz.treble * 0.8 * playMul);
-    const rr = R * (sp.r + viz.treble * 0.06 + 0.03 * Math.sin(t * 2 + i));
-    const x = Math.cos(ang) * rr;
-    const y = Math.sin(ang) * rr;
-    const alpha = (0.25 + viz.treble * 0.45 * playMul) * (0.5 + 0.5 * Math.sin(t * 3 + i));
-    ctx.beginPath();
-    ctx.arc(x, y, sp.size * (w / 400) * (1 + viz.treble * 0.4), 0, Math.PI * 2);
-    ctx.fillStyle = i % 3 === 0
-      ? "rgba(255,43,43," + alpha.toFixed(3) + ")"
-      : "rgba(243,230,200," + (alpha * 0.9).toFixed(3) + ")";
-    ctx.fill();
-  }
-  ctx.restore();
-
-  // Floor mirror bars — thin, secondary, keeps the old bar DNA without dominating.
-  const floorH = h * 0.14;
-  const gap = Math.max(1, w * 0.004);
-  const bw = (w - gap * (bars + 1)) / bars;
-  for (let i = 0; i < bars; i++) {
-    const amp = Math.max(0.02, viz.bars[i]);
-    const bh = Math.max(2, amp * floorH * (0.7 + viz.bass * 0.4));
-    const x = gap + i * (bw + gap);
-    const y = h - bh - h * 0.03;
-    ctx.globalAlpha = 0.28 + energy * 0.35;
-    ctx.fillStyle = i % 4 === 0 ? "#ff2b2b" : "#c45c26";
-    ctx.fillRect(x, y, Math.max(1, bw), bh);
-  }
-  ctx.globalAlpha = 1;
-}
-
-function sizeCanvas(id, cssH) {
-  // Keep drawing while WAVEFORM_VISIBLE=false (display:none → clientWidth/Height are 0).
-  const c = $(id);
-  if (!c) return null;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = c.clientWidth || 320;
-  const h = cssH || c.clientHeight || 80;
-  const tw = Math.max(1, Math.floor(w * dpr));
-  const th = Math.max(1, Math.floor(h * dpr));
-  if (c.width !== tw) c.width = tw;
-  if (c.height !== th) c.height = th;
-  return { c: c, ctx: c.getContext("2d"), w: tw, h: th, dpr: dpr };
-}
-function peakRange(arr, a, b) {
-  let m = 0;
-  const n = arr.length;
-  if (a < 0) a = 0;
-  if (b > n) b = n;
-  if (b <= a) {
-    const i = Math.max(0, Math.min(n - 1, a));
-    return arr[i] || 0;
-  }
-  for (let i = a; i < b; i++) {
-    const v = arr[i] || 0;
-    if (v > m) m = v;
-  }
-  return m;
-}
-function setWaveBpm(grid) {
-  const el = $("wave-bpm");
-  if (!el) return;
-  const bpm = grid && grid.bpm;
-  if (!bpm) {
-    el.textContent = "— BPM";
-    el.classList.remove("on");
-    return;
-  }
-  el.textContent = bpm.toFixed(1) + " BPM";
-  el.classList.add("on");
-}
-function drawBeatGrid(ctx, w, h, dpr, t0, t1, dur, onlyDown) {
-  const g = rw.grid;
-  if (!g || !g.bpm || g.bpm < 40 || !dur) return;
-  const period = 60 / g.bpm;
-  if (period <= 0) return;
-  const bar = g.bar || 4;
-  const beat0 = g.beat0 || 0;
-  const span = t1 - t0;
-  if (span <= 0) return;
-  const pxBeat = (period / span) * w;
-  if (pxBeat < 4 && !onlyDown) onlyDown = true;
-  if (pxBeat < 2 && onlyDown) {
-    const pxBar = pxBeat * bar;
-    if (pxBar < 5) return;
-  }
-  let i = Math.ceil((t0 - beat0) / period - 1e-6);
-  if (i < 0) i = 0;
-  const showNum = !onlyDown && span <= 16 && pxBeat >= 18;
-  ctx.save();
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  ctx.font = (9 * dpr) + "px Outfit, sans-serif";
-  let drawn = 0;
-  for (; drawn < 240; drawn++, i++) {
-    const t = beat0 + i * period;
-    if (t > t1 + period * 0.05) break;
-    const x = ((t - t0) / span) * w;
-    if (x < -2 || x > w + 2) continue;
-    const down = (i % bar) === 0;
-    if (onlyDown && !down) continue;
-    const x0 = Math.round(x);
-    const wi = down ? Math.max(2, dpr) : Math.max(1, dpr);
-    ctx.fillStyle = "rgba(0,0,0,0.5)";
-    ctx.fillRect(x0, 0, wi + Math.max(1, dpr), h);
-    ctx.fillStyle = down ? "rgba(243,230,200,0.82)" : "rgba(196,160,110,0.48)";
-    ctx.fillRect(x0, 0, wi, h);
-    if (showNum && down) {
-      ctx.fillStyle = "rgba(243,230,200,0.58)";
-      ctx.fillText(String(1 + i / bar), Math.round(x) + 3 * dpr, 3 * dpr);
-    }
-  }
-  ctx.restore();
-}
-function stackCol(ctx, x, bw, mid, maxH, lo, md, hi) {
-  lo = Math.max(0, lo || 0);
-  md = Math.max(0, md || 0);
-  hi = Math.max(0, hi || 0);
-  let hLo = (lo / 255) * maxH * 0.46;
-  let hMid = (md / 255) * maxH * 0.34;
-  let hHi = (hi / 255) * maxH * 0.40;
-  if (hi > 18) hHi = Math.max(hHi, 2);
-  const body = hLo + hMid;
-  if (body + hHi > maxH && body > 0) {
-    const k = Math.max(0.2, (maxH - hHi) / body);
-    hLo *= k;
-    hMid *= k;
-  }
-  if (hLo + hMid + hHi < 0.45) return;
-  const xi = Math.floor(x);
-  const wi = Math.max(1, Math.ceil(bw));
-  ctx.fillStyle = "#2f6bff";
-  ctx.fillRect(xi, mid - hLo, wi, hLo);
-  ctx.fillRect(xi, mid, wi, hLo);
-  ctx.fillStyle = "#e08a3a";
-  ctx.fillRect(xi, mid - hLo - hMid, wi, hMid);
-  ctx.fillRect(xi, mid + hLo, wi, hMid);
-  if (hHi >= 0.6) {
-    ctx.fillStyle = "#f6f1e4";
-    ctx.fillRect(xi, mid - hLo - hMid - hHi, wi, hHi);
-    ctx.fillRect(xi, mid + hLo + hMid, wi, hHi);
-  }
-}
-function drawRekord() {
-  const scroll = sizeCanvas("wscroll");
-  const over = sizeCanvas("wover");
-  if (!scroll || !over) return;
-  const pos = nowPos();
-  const dur = playClock.duration || rw.dur || 0;
-  const playback = nowClock("playback");
-  paintScroll(scroll, pos, dur);
-  paintOver(over, pos, dur);
-  if ($("meta")) $("meta").textContent = fmt(pos) + " / " + fmt(dur);
-  paintClockStats(pos, playback);
-}
-function paintScroll(s, pos, dur) {
-  const ctx = s.ctx, w = s.w, h = s.h;
-  ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = "#09070a";
-  ctx.fillRect(0, 0, w, h);
-  ctx.fillStyle = "rgba(196,92,38,0.18)";
-  ctx.fillRect(0, h / 2, w, Math.max(1, s.dpr));
-  if (!rw.n) {
-    if (!rw.analyzing) {
-      ctx.fillStyle = "rgba(154,141,124,0.9)";
-      ctx.font = (11 * s.dpr) + "px Outfit, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("Play a track to build its 3-band waveform", w / 2, h / 2 + 4 * s.dpr);
-    }
-    return;
-  }
-  const n = rw.n;
-  const win = zoomWindow();
-  const cols = Math.max(8, (win / Math.max(0.01, dur || win)) * n);
-  const midCol = (dur > 0) ? (pos / dur) * n : 0;
-  const left = midCol - cols * 0.34;
-  const mid = h / 2;
-  const maxH = h * 0.50;
-  const srcPerPx = cols / w;
-  if (srcPerPx >= 1) {
-    for (let x = 0; x < w; x++) {
-      const a = Math.floor(left + x * srcPerPx);
-      const b = Math.floor(left + (x + 1) * srcPerPx);
-      stackCol(ctx, x, 1, mid, maxH, peakRange(rw.l, a, b), peakRange(rw.m, a, b), peakRange(rw.h, a, b));
-    }
-  } else {
-    const bw = w / cols;
-    const nsrc = Math.ceil(cols);
-    for (let c = 0; c < nsrc; c++) {
-      const i = Math.floor(left + c);
-      if (i < 0 || i >= n) continue;
-      stackCol(ctx, c * bw, bw + 0.5, mid, maxH, rw.l[i] || 0, rw.m[i] || 0, rw.h[i] || 0);
-    }
-  }
-  const t0 = (dur > 0) ? (left / n) * dur : 0;
-  const t1 = t0 + win;
-  drawBeatGrid(ctx, w, h, s.dpr, t0, t1, dur || win, false);
-  const px = w * 0.34;
-  const lag = Math.max(0, (nowClock("playback") || 0) - pos);
-  if (lag > 0.02 && win > 0) {
-    const x1 = w * (0.34 + lag / win);
-    ctx.fillStyle = "rgba(224,122,58,0.22)";
-    ctx.fillRect(px, 0, Math.max(2, x1 - px), h);
-    ctx.fillStyle = "#e07a3a";
-    ctx.fillRect(x1, 0, Math.max(2, s.dpr), h);
-  }
-  ctx.fillStyle = "rgba(243,230,200,0.95)";
-  ctx.fillRect(px, 0, Math.max(2, s.dpr), h);
-}
-function paintOver(s, pos, dur) {
-  const ctx = s.ctx, w = s.w, h = s.h;
-  ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = "#0c090c";
-  ctx.fillRect(0, 0, w, h);
-  const mid = h / 2;
-  const maxH = h * 0.50;
-  if (rw.n) {
-    const n = rw.n;
-    const srcPerPx = n / w;
-    for (let x = 0; x < w; x++) {
-      const a = Math.floor(x * srcPerPx);
-      const b = Math.floor((x + 1) * srcPerPx);
-      stackCol(ctx, x, 1, mid, maxH, peakRange(rw.l, a, b), peakRange(rw.m, a, b), peakRange(rw.h, a, b));
-    }
-    drawBeatGrid(ctx, w, h, s.dpr, 0, dur, dur, true);
-    if (dur > 0) {
-      const win = zoomWindow();
-      const x0 = ((pos - win * 0.34) / dur) * w;
-      const x1 = ((pos + win * 0.66) / dur) * w;
-      ctx.fillStyle = "rgba(243,230,200,0.08)";
-      ctx.fillRect(x0, 0, Math.max(2, x1 - x0), h);
-      ctx.strokeStyle = "rgba(243,230,200,0.35)";
-      ctx.strokeRect(x0 + 0.5, 0.5, Math.max(2, x1 - x0), h - 1);
-    }
-  }
-  if (dur > 0) {
-    const play = nowClock("playback") || pos;
-    const xPlay = (play / dur) * w;
-    const xHeard = (pos / dur) * w;
-    if (Math.abs(xPlay - xHeard) > 1) {
-      ctx.fillStyle = "rgba(224,122,58,0.28)";
-      ctx.fillRect(Math.min(xHeard, xPlay), 0, Math.max(2, Math.abs(xPlay - xHeard)), h);
-      ctx.fillStyle = "#e07a3a";
-      ctx.fillRect(xPlay, 0, Math.max(2, s.dpr), h);
-    }
-    ctx.fillStyle = "rgba(243,230,200,0.95)";
-    ctx.fillRect(xHeard, 0, Math.max(2, s.dpr), h);
-  }
-}
-
-function startViz() {
-  if (viz.raf) return;
-  viz.lastTs = 0;
-  viz.raf = requestAnimationFrame(drawViz);
-}
-function stopViz() {
-  if (viz.raf) cancelAnimationFrame(viz.raf);
-  viz.raf = 0;
-}
-
-// Separate RAF so cover art can stopViz() without freezing waveform / Time Clock.
-let playheadRaf = 0;
-let playheadLast = 0;
-function drawPlayhead(ts) {
-  if (document.hidden) {
-    playheadRaf = 0;
-    return;
-  }
-  playheadRaf = requestAnimationFrame(drawPlayhead);
-  if (ts && playheadLast && ts - playheadLast < 32) return;
-  playheadLast = ts || 0;
-  drawRekord();
-}
-function startPlayhead() {
-  if (playheadRaf) return;
-  playheadLast = 0;
-  playheadRaf = requestAnimationFrame(drawPlayhead);
-}
-function stopPlayhead() {
-  if (playheadRaf) cancelAnimationFrame(playheadRaf);
-  playheadRaf = 0;
+  img.setAttribute("hidden", "");
+  const letter = (st.player && (st.player.artist || st.player.title || st.player.name) || "?").trim().charAt(0).toUpperCase();
+  fb.textContent = name ? letter : "";
 }
 
 function renderQueue(st) {
@@ -1272,125 +148,132 @@ function renderQueue(st) {
   ul.innerHTML = "";
   const items = st.queue || [];
   const total = st.queue_total || 0;
-  $("qmeta").textContent = total ? Math.min(items.length, 5) + " of " + total : "";
+  $("qmeta").textContent = total ? Math.min(items.length, 8) + " of " + total : "";
   if (!items.length) {
     const li = document.createElement("li");
     li.className = "empty empty-state";
     li.innerHTML = (st.count || 0)
-      ? "<span class='empty-title'>End of the queue</span><span class='empty-detail'>Add more in Library, or play a playlist.</span>"
-      : "<span class='empty-title'>Nothing queued</span><span class='empty-detail'>Open Library to play a track or playlist.</span>";
+      ? "<span class='empty-title'>End of the queue</span><span class='empty-detail'>Open Library to play more.</span>"
+      : "<span class='empty-title'>Nothing queued</span><span class='empty-detail'>Open Library to play a track.</span>";
     ul.appendChild(li);
     $("qmore").hidden = true;
     return;
   }
-  items.slice(0, 5).forEach((t, i) => {
+  items.slice(0, 8).forEach((t, i) => {
     const li = document.createElement("li");
-    const by = t.requested_by ? "<span class='qby'>Requested by " + esc(t.requested_by) + "</span>" : "";
     li.innerHTML =
       "<span class='idx'>" + (i + 1) + "</span>" +
-      "<span class='name'>" + esc(t.title || titleOf(t.name)) + by + "</span>";
-    li.onclick = () => playName(t.name);
+      "<span class='name'>" + esc(t.title || titleOf(t.name)) +
+      (t.artist ? "<span class='qby'>" + esc(t.artist) + "</span>" : "") + "</span>";
+    li.onclick = () => playName(t.name, t.origin);
     ul.appendChild(li);
   });
-  if (total > items.length) {
-    $("qmore").hidden = false;
-    $("qmore").textContent = (total - items.length) + " more in Library →";
-  } else {
-    $("qmore").hidden = true;
-  }
+  $("qmore").hidden = total <= items.length;
+  if (total > items.length) $("qmore").textContent = (total - items.length) + " more in Library →";
 }
 
-let tickBusy = false;
 async function tick() {
   if (tickBusy) return;
   tickBusy = true;
   try {
-    const st = await (await fetch("/api/status")).json();
+    const st = await (await fetch("/api/status", { cache: "no-store" })).json();
     last = st;
+    lastAt = Date.now();
     const p = st.player || {};
-    const apOn = !!(st.airplay || {}).active;
+    const ap = st.airplay || {};
+    const apOn = !!ap.active;
     const playing = !!p.playing || apOn;
     const paused = !!p.paused && !apOn;
-    viz.seed = hashName(p.name || st.host || "gigawatt");
-    viz.mode = playing ? "play" : paused ? "pause" : "idle";
-    viz.vol = ((st.volume == null ? 100 : st.volume) / 100);
-    syncTap(p, playing);
-    const ap = st.airplay || {};
-    const output = st.output || "jack";
-    let line = (st.model || "SHR-S2") + " · TOSLINK";
-    if (ap.active) line = "AirPlay · " + (ap.name || "host");
-    else if (output === "browser") line = (st.model || "SHR-S2") + " · this browser";
-    $("hostline").textContent = line;
+    const name = p.name || "";
+    if (apOn) $("hostline").textContent = "AirPlay · " + (ap.name || "host");
+    else if ((st.output || "jack") === "browser") $("hostline").textContent = (st.model || "SHR-S2") + " · this browser";
+    else $("hostline").textContent = (st.model || "SHR-S2") + " · TOSLINK";
     const sub = document.querySelector(".brand .sub");
     if (sub && st.version) sub.textContent = "S2 · V" + st.version;
-    const row = (p.name && libByName[p.name]) || {};
-    if (ap.active) {
-      $("now").textContent = ap.title || "AirPlay";
-    } else {
-      $("now").textContent = p.name ? (p.title || row.title || titleOf(p.name)) : "Nothing playing";
-    }
-    const artistEl = $("nowartist");
-    if (artistEl) {
-      if (ap.active) artistEl.textContent = ap.artist || ap.client || "AirPlay";
-      else artistEl.textContent = p.name ? (p.artist || row.artist || "Unknown artist") : "Pick a track in Library";
-    }
-    let heard = p.position || 0;
-    if (output === "browser" && tap.audio && p.name) {
-      heard = tap.audio.currentTime || heard;
-    }
     if (apOn) {
-      $("meta").textContent = "AirPlay";
-      applyClockSample({}, { playing: false, name: "" }, true);
+      $("now").textContent = ap.title || "AirPlay";
+      $("nowartist").textContent = ap.artist || ap.client || "AirPlay";
+    } else if (name) {
+      $("now").textContent = p.title || titleOf(name);
+      $("nowartist").textContent = p.artist || "Unknown artist";
     } else {
-      $("meta").textContent = fmt(heard) + " / " + fmt(p.duration);
-      applyClockSample({}, p, false);
+      $("now").textContent = "Nothing playing";
+      $("nowartist").textContent = "Pick a track in Library";
     }
-    loadWave(p.name || "");
     $("playbtn").classList.toggle("is-playing", playing);
     $("playbtn").setAttribute("aria-label", playing ? "Pause" : "Play");
-    if (!copyBusy) $("err").textContent = p.error || "";
-    if (!volUser) $("vol").value = st.volume == null ? 100 : st.volume;
     const badge = $("state");
     badge.className = "live-dot " + (playing ? "live" : paused ? "seen" : "dead");
-    badge.textContent = "";
     badge.setAttribute("aria-label", playing ? "Playing" : paused ? "Paused" : "Idle");
     $("vizwrap").classList.toggle("live", playing);
     document.body.classList.toggle("is-playing", playing);
-    if (apOn) loadCover("");
-    else loadCover(p.name || "");
+    if (!volUser) $("vol").value = st.volume == null ? 100 : st.volume;
+    $("err").textContent = p.error || "";
+    $("seekbar").disabled = !name || apOn || !(p.duration > 0);
+    paintSeek();
+    showCover(st, apOn ? "" : name);
     renderQueue(st);
   } catch (e) {
     $("err").textContent = "Host is not answering";
-    viz.mode = "idle";
   } finally {
     tickBusy = false;
   }
 }
 
-if (tap.audio) {
-  tap.audio.addEventListener("ended", () => {
-    if ((last.output || "jack") === "browser") goNext();
-  });
+async function toggle() {
+  const p = last.player || {};
+  if (p.playing) await api("/api/pause");
+  else if (p.paused) await api("/api/resume");
+  else if (p.name) await api("/api/play", { name: p.name, origin: p.origin || "local" });
+  else if ((last.queue || [])[0]) await api("/api/next");
+  tick();
 }
-window.addEventListener("resize", () => { sizeViz(); drawRekord(); });
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    stopViz();
-    stopPlayhead();
-    try { tap.audio.pause(); } catch (e) {}
-  } else {
-    startPlayhead();
-    const coverOn = $("vizwrap") && $("vizwrap").classList.contains("has-cover");
-    if (!coverOn) startViz();
-    tick();
-  }
+async function playName(name, origin) {
+  await api("/api/play", { name: name, origin: origin || "local" });
+  tick();
+}
+$("prevbtn").onclick = async () => { await api("/api/prev"); tick(); };
+$("nextbtn").onclick = async () => { await api("/api/next"); tick(); };
+$("stopbtn").onclick = async () => { await api("/api/stop"); tick(); };
+$("playbtn").onclick = toggle;
+$("coverart").onclick = toggle;
+$("fallback").onclick = toggle;
+
+$("vol").addEventListener("input", (e) => {
+  const n = Math.max(0, Math.min(100, Number(e.target.value)));
+  volPending = n;
+  if (volBusy) return;
+  volBusy = true;
+  api("/api/volume", { n: n }).finally(() => {
+    volBusy = false;
+    if (volPending != null && volPending !== n) {
+      const m = volPending;
+      volPending = null;
+      volBusy = true;
+      api("/api/volume", { n: m }).finally(() => { volBusy = false; });
+    } else volPending = null;
+  });
 });
-startPlayhead();
-startViz();
-ensureLib(true);
+$("vol").addEventListener("pointerdown", () => { volUser = true; });
+$("vol").addEventListener("pointerup", () => { volUser = false; });
+$("vol").addEventListener("pointercancel", () => { volUser = false; });
+
+$("seekbar").addEventListener("pointerdown", () => { seekUser = true; });
+$("seekbar").addEventListener("pointerup", () => { seekUser = false; });
+$("seekbar").addEventListener("pointercancel", () => { seekUser = false; });
+$("seekbar").addEventListener("change", async (e) => {
+  const p = last.player || {};
+  const dur = p.duration || 0;
+  if (!dur) return;
+  const t = (Number(e.target.value) / 1000) * dur;
+  seekUser = false;
+  await api("/api/seek", { seconds: t });
+  tick();
+});
+
 tick();
 setInterval(tick, 1000);
-setInterval(() => ensureLib(false), 15000);
+setInterval(paintSeek, 250);
 </script>
 </body>
 </html>
