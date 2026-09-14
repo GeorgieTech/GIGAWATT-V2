@@ -52,7 +52,10 @@
       </div>
       <div class="row center kara-actions">
         <button class="icon" type="button" id="prevbtn" aria-label="Previous">⟨⟨</button>
-        <button class="playbig primary" id="playbtn" type="button">Play</button>
+        <button class="playbig primary" id="playbtn" type="button" aria-label="Play">
+          <svg class="ico-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          <svg class="ico-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+        </button>
         <button class="icon" type="button" id="nextbtn" aria-label="Next">⟩⟩</button>
       </div>
       <div class="row center">
@@ -402,7 +405,8 @@ async function tick() {
       name: p.name || ""
     };
     $("hostline").textContent = playing ? "TOSLINK · karaoke" : "SHR-S2 · karaoke";
-    $("playbtn").textContent = playing ? "Pause" : "Play";
+    $("playbtn").classList.toggle("is-playing", playing);
+    $("playbtn").setAttribute("aria-label", playing ? "Pause" : "Play");
     const badge = $("state");
     badge.className = "badge " + (playing ? "live" : paused ? "seen" : "dead");
     badge.textContent = playing ? "Live" : paused ? "Paused" : "Idle";

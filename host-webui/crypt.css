@@ -718,23 +718,35 @@ audio#tap {
   color: #ffffff;
 }
 .transport .icon:hover { background: #1a1a1a; border: 0; }
-.transport .playbig {
+.playbig {
   width: 72px;
   height: 72px;
   min-height: 72px;
   padding: 0;
   border-radius: 50%;
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   letter-spacing: 0;
   text-transform: none;
 }
-.transport .playbig.primary {
+.playbig.primary {
   background: #ffffff;
   color: #030303;
   border: 0;
 }
+.playbig svg {
+  width: 28px;
+  height: 28px;
+  fill: currentColor;
+  display: block;
+}
+.playbig .ico-play { transform: translateX(2px); }
+.playbig .ico-pause { display: none; }
+.playbig.is-playing .ico-play { display: none; }
+.playbig.is-playing .ico-pause { display: block; transform: none; }
 .transport .icon:disabled,
-.transport .playbig:disabled,
+.playbig:disabled,
 .stop-inline:disabled,
 body.follow-lock .transport .icon,
 body.follow-lock .stop-inline {
@@ -746,7 +758,7 @@ body.follow-lock .stop-inline {
   text-decoration: none;
 }
 .transport .icon:disabled:hover,
-.transport .playbig:disabled:hover,
+.playbig:disabled:hover,
 .stop-inline:disabled:hover,
 body.follow-lock .transport .icon:hover,
 body.follow-lock .stop-inline:hover {
@@ -754,14 +766,14 @@ body.follow-lock .stop-inline:hover {
   color: #7a7a7a;
   text-decoration: none;
 }
-.transport .playbig.primary:disabled,
-.transport .playbig.primary:disabled:hover {
+.playbig.primary:disabled,
+.playbig.primary:disabled:hover {
   background: #2a2a2a;
   color: #7a7a7a;
   opacity: 0.45;
   border: 0;
 }
-.transport .playbig.primary:hover {
+.playbig.primary:hover {
   background: #f2f2f2;
   border: 0;
 }
