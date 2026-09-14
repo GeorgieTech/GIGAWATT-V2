@@ -31,6 +31,17 @@ class ApplyTests(unittest.TestCase):
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 
+    def test_splits_truenas_dataset_path(self):
+        folder = tempfile.mkdtemp(prefix="nas-")
+        try:
+            share = nas.NasShare(folder, os.path.join(folder, "mnt"), folder)
+            ok = share.apply({"host": "192.168.1.61", "share": "Pool/Delorean/Music", "username": "carrillo"})
+            self.assertTrue(ok, share.error)
+            self.assertEqual(share.cfg["share"], "Music")
+            self.assertEqual(share.cfg["host"], "192.168.1.61")
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
     def test_saves_share(self):
         folder = tempfile.mkdtemp(prefix="nas-")
         try:

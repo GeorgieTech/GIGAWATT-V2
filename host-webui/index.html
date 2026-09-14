@@ -18,7 +18,7 @@
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.2.30</div>
+      <div class="sub">S2 · V2.2.31</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -693,6 +693,7 @@ function loadCover(name) {
   const data = last.cover || {};
   if (name && data.name === name && data.found && data.url) {
     wrap.classList.add("has-cover");
+    img.removeAttribute("hidden");
     img.hidden = false;
     if (img.getAttribute("src") !== data.url) img.src = data.url;
     // Hide canvas via CSS; stop viz RAF for GPU idle. Playhead RAF stays independent.
@@ -1326,12 +1327,12 @@ async function tick() {
     if (ap.active) {
       $("now").textContent = ap.title || "AirPlay";
     } else {
-      $("now").textContent = p.name ? (row.title || titleOf(p.name)) : "Nothing playing";
+      $("now").textContent = p.name ? (p.title || row.title || titleOf(p.name)) : "Nothing playing";
     }
     const artistEl = $("nowartist");
     if (artistEl) {
       if (ap.active) artistEl.textContent = ap.artist || ap.client || "AirPlay";
-      else artistEl.textContent = p.name ? (row.artist || "Unknown artist") : "Pick a track in Library";
+      else artistEl.textContent = p.name ? (p.artist || row.artist || "Unknown artist") : "Pick a track in Library";
     }
     let heard = p.position || 0;
     if (output === "browser" && tap.audio && p.name) {

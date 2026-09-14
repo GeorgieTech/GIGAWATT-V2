@@ -447,18 +447,35 @@ class CryptApp(object):
             tracks = list(self.tracks)
             order = list(self.order)
             idx = self.index
+            origin = self._play_origin or "local"
             requests = dict(self.requests)
+        playing_name = snap.get("name") or ""
+        if origin != "nas":
+            names = [t.get("name") for t in tracks if t.get("name")]
+            name_set = set(names)
+            if not order or (playing_name and playing_name not in order and playing_name in name_set):
+                order = names
+            if playing_name in order:
+                idx = order.index(playing_name)
+            with self.lock:
+                if self._play_origin != "nas":
+                    self.order = list(order)
+                    self.index = idx
         queue, queue_total = self._upcoming(order, tracks, idx, 24, requests)
         eq = clamp_eq(snap.get("eq"))
         me = identity()
-        playing_name = snap.get("name") or ""
         cover_artist = cover_album = cover_title = ""
         for t in tracks:
             if t.get("name") == playing_name:
                 cover_artist = t.get("artist") or ""
                 cover_album = t.get("album") or ""
                 cover_title = t.get("title") or ""
+                snap["title"] = cover_title or snap.get("title") or ""
+                snap["artist"] = cover_artist or snap.get("artist") or ""
+                snap["album"] = cover_album or snap.get("album") or ""
                 break
+        if playing_name and not snap.get("title"):
+            snap["title"] = os.path.splitext(os.path.basename(playing_name))[0].replace("_", " ")
         return {
             "host": me.get("host") or socket.gethostname(),
             "model": me.get("model") or "SHR-S2-00",
@@ -629,21 +646,24 @@ class CryptApp(object):
             if not os.path.isfile(full):
                 self.player.error = "not found"
                 return False
+            cleaned = []
+            if order:
+                seen = set()
+                for item in order:
+                    item = nas_rel_ok(str(item or ""))
+                    if item and item not in seen:
+                        cleaned.append(item)
+                        seen.add(item)
+                    if len(cleaned) >= 300:
+                        break
+            ok = self.player.play(rel, start=start, silent=self._silent(), origin="nas")
+            if not ok:
+                return False
             with self.lock:
-                cleaned = []
-                if order:
-                    seen = set()
-                    for item in order:
-                        item = nas_rel_ok(str(item or ""))
-                        if item and item not in seen:
-                            cleaned.append(item)
-                            seen.add(item)
-                        if len(cleaned) >= 300:
-                            break
                 self.order = cleaned or [rel]
                 self.index = self.order.index(rel) if rel in self.order else 0
                 self._play_origin = "nas"
-            return self.player.play(rel, start=start, silent=self._silent(), origin="nas")
+            return True
         self.refresh()
         if not self._ensure_local(name):
             return False
@@ -662,11 +682,9 @@ class CryptApp(object):
                         break
                 if cleaned:
                     self.order = cleaned
-            if not self.order:
-                self.order = list(names)
             if name not in name_set:
                 return False
-            if name not in self.order:
+            if not self.order or name not in self.order:
                 self.order = list(names)
             if name not in self.order:
                 return False

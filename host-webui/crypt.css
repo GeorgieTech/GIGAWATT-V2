@@ -162,9 +162,6 @@ body.is-playing {
   min-height: 1.2em;
   word-break: break-word;
   text-align: left;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
   letter-spacing: -0.02em;
 }

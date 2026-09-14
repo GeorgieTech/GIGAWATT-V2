@@ -18,7 +18,7 @@ NAS_BIN = os.environ.get("NAS_BIN", "/data/opt/nas")
 NAS_TRACK_CAP = 2000
 AUDIO_EXT = (".mp3", ".flac", ".opus", ".ogg", ".wav", ".m4a", ".aac")
 HOST_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
-SHARE_RE = re.compile(r"^[A-Za-z0-9._ $()-]{1,80}$")
+SHARE_RE = re.compile(r"^[A-Za-z0-9._ $()/-]{1,80}$")
 FOLDER_RE = re.compile(r"^[A-Za-z0-9._ /$()-]{0,120}$")
 USER_RE = re.compile(r"^[A-Za-z0-9._\\@-]{0,64}$")
 DOMAIN_RE = re.compile(r"^[A-Za-z0-9._-]{0,64}$")
@@ -325,6 +325,14 @@ class NasShare(object):
         host = str(data.get("host") or "").strip()
         share = str(data.get("share") or "").strip().strip("/")
         folder = str(data.get("folder") or "").strip().strip("/")
+        # TrueNAS dataset Pool/Delorean/Music is not an SMB share. The share
+        # name is the last segment (Music). Extra path goes in Folder.
+        if share and "/" in share:
+            parts = [p for p in share.split("/") if p]
+            if parts:
+                share = parts[-1]
+                if not folder and len(parts) > 1:
+                    folder = folder
         username = str(data.get("username") or "").strip()
         domain = str(data.get("domain") or "").strip()
         password = data.get("password")
@@ -415,6 +423,10 @@ class NasShare(object):
                 "30s",
                 "--contimeout",
                 "12s",
+                "--retries",
+                "1",
+                "--low-level-retries",
+                "1",
                 "--uid",
                 str(os.getuid()),
                 "--gid",
@@ -501,6 +513,7 @@ class NasShare(object):
             "user = %s\n"
             "pass = %s\n"
             "domain = %s\n"
+            "idle_timeout = 30s\n"
         ) % (
             self.cfg.get("host") or "",
             self.cfg.get("username") or "guest",
