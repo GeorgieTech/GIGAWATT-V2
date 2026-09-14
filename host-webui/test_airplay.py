@@ -26,7 +26,9 @@ class ConfTests(unittest.TestCase):
         conf = airplay.CONF_TEMPLATE % ("Gigawatt 39DB", "/tmp/gigawatt-airplay.meta")
         self.assertIn('interpolation = "basic"', conf)
         self.assertNotIn('interpolation = "auto"', conf)
-        self.assertNotIn("audio_backend_buffer_desired_length_in_seconds", conf)
+        self.assertIn("resync_threshold_in_seconds = 0.0", conf)
+        self.assertIn("audio_backend_buffer_desired_length_in_seconds", conf)
+        self.assertIn("audio_backend_latency_offset_in_seconds", conf)
         self.assertIn('ignore_volume_control = "no"', conf)
         self.assertNotIn("wait_for_completion", conf)
         self.assertNotIn("run_this_before_play_begins", conf)
@@ -35,6 +37,29 @@ class ConfTests(unittest.TestCase):
     def test_never_targets_silent_44k1(self):
         self.assertEqual(airplay.AIRPLAY_RATE, 48000)
         self.assertNotEqual(airplay.AIRPLAY_RATE, 44100)
+
+
+class MetaParseTests(unittest.TestCase):
+    def test_compact_and_pretty_items(self):
+        compact = (
+            b"<item><type>73736e63</type><code>636c6970</code><length>4</length>"
+            b"<data encoding=\"base64\">MS4xMQ==</data></item>"
+        )
+        pretty = b"""<item>
+  <type>636f7265</type>
+  <code>6d696e6d</code>
+  <length>5</length>
+  <data encoding="base64">
+  R2xvdw==
+  </data>
+</item>"""
+        self.assertTrue(airplay.ITEM_RE.search(compact))
+        self.assertTrue(airplay.ITEM_RE.search(pretty))
+        ap = airplay.AirPlay("/tmp/no-such-airplay")
+        ap._apply("dmap.minm", "Havana")
+        ap._apply("dmap.asar", "Camila Cabello")
+        self.assertEqual(ap.title, "Havana")
+        self.assertEqual(ap.artist, "Camila Cabello")
 
 
 class NameTests(unittest.TestCase):

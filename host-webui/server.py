@@ -875,6 +875,11 @@ APP = CryptApp()
 
 def _on_airplay_begin():
     APP.stop()
+    try:
+        from airplay import prepare_toslink
+        prepare_toslink()
+    except Exception:
+        traceback.print_exc()
 
 
 AIRPLAY = AirPlay(

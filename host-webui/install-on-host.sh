@@ -73,13 +73,14 @@ if [ -f /etc/pulse/daemon.conf ]; then
 
 # GIGAWATT-AUDIO
 # 48 kHz default matches Gigawatt Beta2 (this jack is silent at 44.1).
-# Library paplay is 96 kHz and uses the alternate rate for Host Time Clock.
+# Resample AirPlay 44.1 onto 48 kHz — do not let Pulse open imx-spdif at 44.1.
+# Library paplay is 96 kHz and uses the alternate rate.
 resample-method = speex-float-1
-avoid-resampling = yes
+avoid-resampling = no
 default-sample-rate = 48000
 alternate-sample-rate = 96000
 default-fragments = 8
-default-fragment-size-msec = 50
+default-fragment-size-msec = 25
 high-priority = yes
 EOF
 fi

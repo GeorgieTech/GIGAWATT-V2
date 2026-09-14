@@ -1,10 +1,10 @@
-# Gigawatt V2.2.35
+# Gigawatt V2.2.36
 
 Repo: [`GIGAWATT-V2`](https://github.com/GeorgieTech/GIGAWATT-V2)
 
 A local TOSLINK music player on a recycled Savant S2 host (SHC-S2-00 Quad). Library on this disk, web UI on port 80, optical out.
 
-**Current release: [V2.2.35](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.35)** (`v2.2.35`). Previous: [V2.2.34](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.34) · [V2.2.33](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.33).
+**Current release: [V2.2.36](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.36)** (`v2.2.36`). Previous: [V2.2.35](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.35) · [V2.2.34](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.34).
 
 This project is **not affiliated with Savant Systems**.
 
@@ -16,7 +16,7 @@ There is **no cluster**, linked library, Unison, or host-to-host discovery. This
 
 - **Album covers** from Cover Art Archive (local/embedded first). Playing shows the cover when found, otherwise the visualizer.
 - **This jack or this browser.** Settings → Playback. TOSLINK is the default.
-- **AirPlay 1** to this host. Settings → AirPlay (`Gigawatt 39DB`, …). iPhone/Mac → Pulse → TOSLINK.
+- **AirPlay 1** to this host. Settings → AirPlay (`Gigawatt 39DB`, …). iPhone/Mac → Pulse → TOSLINK. Pulse resamples 44.1 kHz onto 48 kHz so this jack actually plays.
 - Dark Playing and Library UI, Karaoke, Report, 31-band TOSLINK EQ (in Settings)
 - Play through the S2 **TOSLINK** jack (`ffmpeg` → `paplay` → Pulse → `imx-spdif`)
 - **NAS** SMB share from Settings. Library can browse it; playback reads the share (files stay on the NAS). NAS lyrics stay on-demand (Karaoke → Fetch). Tracks on this disk fetch lyrics in the background; Library shows a progress bar.

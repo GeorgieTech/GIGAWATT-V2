@@ -5,5 +5,6 @@
 .include /etc/pulse/savant-vcd.pa
 .nofail
 unload-module module-suspend-on-idle
+unload-module module-role-cork
 .fail
 load-module module-suspend-on-idle timeout=300

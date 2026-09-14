@@ -17,12 +17,20 @@ DEFAULT_NAME = "Gigawatt"
 # Same stuffing as Gigawatt Beta2 (worked). Do not open imx-spdif at 44.1 —
 # that rate reports RUNNING with 0 µs latency and the optical jack is silent.
 # Pulse default 48 kHz (Beta2 library rate) resamples AirPlay 44.1 → 48.
+# imx-spdif ALSA buffer is ~800 ms. shairport-sync 3.3.7 starts the Pulse
+# stream CORKED and flush()+corks again when delay error > 50 ms. That left
+# AirPlay "playing" with a corked sink-input and a silent jack. Disable
+# resync mute and tell it the device is late. Never wait_for_completion —
+# that opens the jack at 44.1 (RUNNING, 0 µs, silent).
 CONF_TEMPLATE = """general = {
   name = "%s";
   interpolation = "basic";
   output_backend = "pa";
   ignore_volume_control = "no";
   port = 5000;
+  resync_threshold_in_seconds = 0.0;
+  audio_backend_buffer_desired_length_in_seconds = 0.35;
+  audio_backend_latency_offset_in_seconds = -0.45;
 };
 sessioncontrol = {
   allow_session_interruption = "yes";
@@ -36,11 +44,14 @@ metadata = {
 };
 pa = {
   application_name = "Gigawatt AirPlay";
+  server = "/var/run/pulse/native";
+  sink = "alsa_output.platform-sound-spdif.stereo-fallback";
 };
 """
 
 ITEM_RE = re.compile(
-    br"<item><type>([0-9a-fA-F]+)</type><code>([0-9a-fA-F]+)</code><length>(\d+)</length>"
+    br"<item>\s*<type>\s*([0-9a-fA-F]+)\s*</type>\s*<code>\s*([0-9a-fA-F]+)\s*</code>\s*"
+    br"<length>\s*(\d+)\s*</length>"
     br"(?:\s*<data encoding=\"base64\">(.*?)</data>)?\s*</item>",
     re.DOTALL | re.IGNORECASE,
 )
@@ -243,9 +254,7 @@ def _pulse_airplay_playing():
     return "Gigawatt AirPlay" in out or "shairport" in out.lower()
 
 
-def _relax_pulse_idle():
-    """Savant loads module-suspend-on-idle timeout=0, which suspends TOSLINK
-    between AirPlay packets and makes the jack skip. Hold the sink up."""
+def _unload_modules_named(needle):
     env = _pulse_env()
     try:
         out = subprocess.check_output(
@@ -258,7 +267,7 @@ def _relax_pulse_idle():
     except Exception:
         return
     for line in out.splitlines():
-        if "module-suspend-on-idle" not in line:
+        if needle not in line:
             continue
         idx = line.split()[0]
         try:
@@ -271,6 +280,15 @@ def _relax_pulse_idle():
             )
         except Exception:
             pass
+
+
+def _relax_pulse_idle():
+    """Savant loads module-suspend-on-idle timeout=0, which suspends TOSLINK
+    between AirPlay packets and makes the jack skip. Hold the sink up.
+    module-role-cork (doorbell) can also cork the AirPlay stream."""
+    _unload_modules_named("module-suspend-on-idle")
+    _unload_modules_named("module-role-cork")
+    env = _pulse_env()
     try:
         subprocess.call(
             ["pactl", "load-module", "module-suspend-on-idle", "timeout=300"],
@@ -281,6 +299,12 @@ def _relax_pulse_idle():
         )
     except Exception:
         pass
+
+
+def prepare_toslink():
+    """Pin TOSLINK at 48 kHz before shairport opens Pulse. Never 44.1."""
+    _relax_pulse_idle()
+    return set_spdif_rate(AIRPLAY_RATE)
 
 
 class AirPlay(object):
@@ -426,7 +450,7 @@ class AirPlay(object):
         if not pulse_ready(0):
             self.error = "waiting for PulseAudio"
             return False
-        _relax_pulse_idle()
+        prepare_toslink()
         try:
             self._ensure_fifo()
         except Exception as exc:
@@ -542,14 +566,14 @@ class AirPlay(object):
                 self.album = ""
             elif key == "ssnc.prsm":
                 self.active = True
-            elif key == "core.minm":
+            elif key in ("core.minm", "dmap.minm"):
                 if text:
                     self.title = text
                 self.active = True
-            elif key == "core.asar":
+            elif key in ("core.asar", "dmap.asar"):
                 if text:
                     self.artist = text
-            elif key == "core.asal":
+            elif key in ("core.asal", "dmap.asal"):
                 if text:
                     self.album = text
             elif key in ("ssnc.snam", "ssnc.snua", "ssnc.clip"):
