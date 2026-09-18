@@ -42,6 +42,16 @@ class InsertPlayNextTests(unittest.TestCase):
         self.assertEqual(order, ["a.mp3"])
         self.assertEqual(idx, 0)
 
+    def test_nas_path_inserts_after_current(self):
+        order, idx = queueing.insert_play_next(
+            ["Kanye West/Graduation/Stronger.flac", "Kanye West/Graduation/Good Life.flac"],
+            0,
+            "Daft Punk/Discovery/One More Time.mp3",
+        )
+        self.assertEqual(order[0], "Kanye West/Graduation/Stronger.flac")
+        self.assertEqual(order[1], "Daft Punk/Discovery/One More Time.mp3")
+        self.assertEqual(idx, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
