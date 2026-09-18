@@ -121,6 +121,9 @@ class TokenTests(unittest.TestCase):
         self.assertIn("glow.flac", self.app.started)
         self.assertTrue(any(row.startswith("Play=Play") for row in lines))
         self.assertTrue(any(row.startswith("Title=Glow") for row in lines))
+        self.assertTrue(any(row == "CurrentSongName=Glow" for row in lines))
+        self.assertTrue(any(row == "CurrentArtistName=CRYPT Test" for row in lines))
+        self.assertTrue(any(row.startswith("CurrentCombinedPlayStatus=Play") for row in lines))
 
     def test_pause_and_resume(self):
         savant.handle_line("Play", self.bridge)
@@ -187,7 +190,8 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(types, ["optical_digital"])
         resources = [n.get("resource_type") for n in root.findall(".//resource")]
         self.assertIn("AV_EXTERNALMEDIASERVER_SOURCE", resources)
-        self.assertNotIn("AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE", resources)
+        self.assertIn("AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE", resources)
+        self.assertNotIn("AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE_RADIO_SPOTIFY", resources)
         ip = root.find(".//control_interfaces/ip")
         self.assertEqual(ip.get("port"), "5004")
 

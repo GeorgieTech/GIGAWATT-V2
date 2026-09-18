@@ -20,7 +20,7 @@ Do **not** point Inspector at 192.168.1.40. Do not unmask Savant on 142.
 | Model | Gigawatt |
 | Class | Media_server |
 | Jack | **TOSLINK** (`optical_digital`) |
-| Resource | `AV_EXTERNALMEDIASERVER_SOURCE` + volume |
+| Resource | `AV_EXTERNALMEDIASERVER_SOURCE` + `AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE` + volume |
 | Control | IP telnet **5004**, CR/LF |
 | Volume | 0–50 (host maps to 0–100) |
 

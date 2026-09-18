@@ -75,13 +75,16 @@ class HostBridge(object):
         else:
             play = "Stop"
         title = snap.get("title") or ""
+        name = snap.get("name") or ""
         if not title:
-            name = snap.get("name") or ""
             title = os.path.splitext(os.path.basename(name))[0].replace("_", " ")
+        pos = float(snap.get("position") or 0)
+        dur = float(snap.get("duration") or 0)
+        art = self._artwork_url(name, snap)
         return {
             "playing": playing,
             "paused": paused,
-            "name": snap.get("name") or "",
+            "name": name,
             "origin": snap.get("origin") or "local",
             "title": title,
             "artist": snap.get("artist") or "",
@@ -89,8 +92,43 @@ class HostBridge(object):
             "volume": vol,
             "muted": self._muted,
             "play": play,
-            "power": "ON" if (playing or paused or (snap.get("name") or "")) else "OFF",
+            "power": "ON" if (playing or paused or name) else "OFF",
+            "position": pos,
+            "duration": dur,
+            "artwork": art,
         }
+
+    def _artwork_url(self, name, snap):
+        if not name:
+            return ""
+        try:
+            from cover import COVERS
+            from identity import identity
+            row = COVERS.snapshot(
+                name,
+                artist=snap.get("artist") or "",
+                album=snap.get("album") or "",
+                title=snap.get("title") or "",
+            )
+            path = (row or {}).get("url") or ""
+            if not path or not row.get("found"):
+                return ""
+            if path.startswith("http://") or path.startswith("https://"):
+                return path
+            ip = (identity() or {}).get("ip") or "192.168.1.142"
+            if not path.startswith("/"):
+                path = "/" + path
+            return "http://%s%s" % (ip, path)
+        except Exception:
+            return ""
+
+    def _catalog_names(self):
+        tracks = []
+        try:
+            tracks = self.app.catalog_snapshot() or []
+        except Exception:
+            tracks = list(getattr(self.app, "tracks", None) or [])
+        return [t.get("name") for t in tracks if t.get("name")]
 
     def play(self):
         snap = self.app.player.snapshot()
@@ -98,17 +136,13 @@ class HostBridge(object):
             return bool(self.app.resume())
         if snap.get("playing"):
             return True
+        names = self._catalog_names()
         name = snap.get("name") or ""
         origin = snap.get("origin") or "local"
         if name:
-            return bool(self.app.play_name(name, origin=origin))
-        tracks = []
-        try:
-            tracks = self.app.catalog_snapshot() or []
-        except Exception:
-            tracks = list(getattr(self.app, "tracks", None) or [])
-        if tracks:
-            return bool(self.app.play_name(tracks[0].get("name") or ""))
+            return bool(self.app.play_name(name, origin=origin, order=names or None))
+        if names:
+            return bool(self.app.play_name(names[0], order=names))
         return False
 
     def pause(self):
@@ -151,19 +185,70 @@ class HostBridge(object):
         return bool(self.app.seek(max(0.0, pos + float(seconds))))
 
 
-def status_lines(snap):
+def _hms(sec):
+    sec = max(0, int(sec or 0))
+    h = sec // 3600
+    m = (sec % 3600) // 60
+    s = sec % 60
+    return h, m, s
+
+
+def _clean(text):
+    return str(text or "").replace("\r", " ").replace("\n", " ").replace("\t", " ").strip()
+
+
+def status_lines(snap, include_ok=True):
     vol = host_to_savant_vol(snap.get("volume") or 0)
     mute = "ON" if snap.get("muted") else "OFF"
-    lines = [
-        "OK",
+    play = snap.get("play") or "Stop"
+    title = _clean(snap.get("title"))
+    artist = _clean(snap.get("artist"))
+    album = _clean(snap.get("album"))
+    art = _clean(snap.get("artwork"))
+    pos = float(snap.get("position") or 0)
+    dur = float(snap.get("duration") or 0)
+    remain = max(0.0, dur - pos) if dur else 0.0
+    eh, em, es = _hms(pos)
+    rh, rm, rs = _hms(remain)
+    progress = "0"
+    if dur > 0:
+        progress = str(int(round(100.0 * min(1.0, pos / dur))))
+    paused = "true" if snap.get("paused") else "false"
+    lines = []
+    if include_ok:
+        lines.append("OK")
+    lines.extend([
         "Volume=%s" % vol,
         "Mute=%s" % mute,
         "Power=%s" % (snap.get("power") or "OFF"),
-        "Play=%s" % (snap.get("play") or "Stop"),
-        "Title=%s" % (snap.get("title") or ""),
-        "Artist=%s" % (snap.get("artist") or ""),
-        "Album=%s" % (snap.get("album") or ""),
-    ]
+        "Play=%s" % play,
+        "Title=%s" % title,
+        "Artist=%s" % artist,
+        "Album=%s" % album,
+        "CurrentArtworkURL=%s" % art,
+        "CurrentCombinedPlayStatus=%s" % play,
+        "CurrentArtistName=%s" % artist,
+        "CurrentSongName=%s" % title,
+        "CurrentAlbumName=%s" % album,
+        "MediaServerName=Gigawatt",
+        "CurrentElapsedHour=%s" % eh,
+        "CurrentElapsedMinute=%s" % em,
+        "CurrentElapsedSecond=%s" % es,
+        "CurrentTimeRemainingHour=%s" % rh,
+        "CurrentTimeRemainingMinute=%s" % rm,
+        "CurrentTimeRemainingSecond=%s" % rs,
+        "CurrentProgress=%s" % progress,
+        "CurrentElapsedTime=%d:%02d:%02d" % (eh, em, es),
+        "CurrentRemainingTime=%d:%02d:%02d" % (rh, rm, rs),
+        "CurrentShuffleStatus=false",
+        "CurrentRepeatStatus=false",
+        "IsShuffleStatusAvailable=false",
+        "IsRepeatStatusAvailable=false",
+        "CurrentPauseStatus=%s" % paused,
+        "PlayType=1",
+        "SeekDisabled=false",
+        "NowPlayingSource=Gigawatt",
+    ])
     return lines
 
 
@@ -264,6 +349,8 @@ class SavantTelnet(object):
         self.sock = None
         self.error = ""
         self._stop = threading.Event()
+        self._clients = []
+        self._clients_lock = threading.Lock()
 
     def snapshot(self):
         return {
@@ -286,6 +373,16 @@ class SavantTelnet(object):
                 sock.close()
             except Exception:
                 pass
+
+    def _send(self, conn, lines):
+        if not lines:
+            return True
+        payload = "\r\n".join(lines) + "\r\n"
+        try:
+            conn.sendall(payload.encode("utf-8", "replace"))
+            return True
+        except Exception:
+            return False
 
     def _serve(self):
         try:
@@ -318,10 +415,19 @@ class SavantTelnet(object):
             ).start()
 
     def _client(self, conn):
-        conn.settimeout(300)
+        conn.settimeout(1.0)
+        with self._clients_lock:
+            self._clients.append(conn)
+        self._send(conn, status_lines(self.bridge.snapshot(), include_ok=False))
+        last_push = time.time()
         buf = b""
         try:
             while not self._stop.is_set():
+                now = time.time()
+                if now - last_push >= 1.0:
+                    if not self._send(conn, status_lines(self.bridge.snapshot(), include_ok=False)):
+                        break
+                    last_push = now
                 try:
                     chunk = conn.recv(1024)
                 except socket.timeout:
@@ -333,15 +439,14 @@ class SavantTelnet(object):
                     raw, buf = buf.split(b"\n", 1)
                     line = raw.replace(b"\r", b"").decode("utf-8", "replace")
                     _ok, lines = handle_line(line, self.bridge)
-                    if not lines:
-                        continue
-                    payload = "\r\n".join(lines) + "\r\n"
-                    try:
-                        conn.sendall(payload.encode("utf-8", "replace"))
-                    except Exception:
+                    if not self._send(conn, lines):
                         return
+                    last_push = time.time()
         except Exception:
             pass
+        with self._clients_lock:
+            if conn in self._clients:
+                self._clients.remove(conn)
         try:
             conn.close()
         except Exception:

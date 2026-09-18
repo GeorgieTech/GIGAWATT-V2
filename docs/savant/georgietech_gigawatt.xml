@@ -5,8 +5,10 @@
   Inspector: 192.168.1.142  port 5004  (telnet, CR/LF)
   Wire: TOSLINK optical out of this chassis into the AVR / matrix optical in.
 
-  This is NOT the obsolete SMS-102A profile. No SavantMediaQuery coprocessor,
-  no HDMI/VGA, no radio services. Transport + volume only.
+  This is NOT SMS-102A. No SavantMediaQuery coprocessor (that protocol is
+  Savant's own media server). TOSLINK carries both EXTERNALMEDIASERVER
+  (transport) and LIVEMEDIAQUERY_SAVANTMEDIA (Now Playing / audio query).
+  No HDMI/VGA, no radio services.
 
   Host telnet tokens (see host-webui/savant.py):
     Play Pause Stop SkipNext SkipPrevious SkipUp SkipDown
@@ -20,13 +22,17 @@
     alias="Gigawatt,Gigawatt TOSLINK,GeorgieTech Gigawatt,CRYPT"
     device_class="Media_server"
     minimum_component_engine_version="0.0"
-    rpm_xml_version="1.0"
+    rpm_xml_version="1.1"
     minimum_compatible_xml_version="1.0">
 
     <notes>
         Gigawatt local TOSLINK music player (SHC-S2-00 Quad at 192.168.1.142).
         Control is IP telnet port 5004. Audio is optical digital only.
+        Now Playing uses State Center CurrentArtistName / CurrentSongName /
+        CurrentArtworkURL (unsolicited lines from the host). Do not add
+        coprocessor SavantMediaQuery — that would steal this telnet session.
         Not affiliated with Savant Systems. Do not use SMS-102A with this host.
+        Version: 1.1 Change: Live media query resource + now-playing states. Risk: Low Importance: Critical
         Version: 1.0 Change: Initial transport + volume. Risk: Low Importance: Critical
     </notes>
 
@@ -41,6 +47,7 @@
         <output name_on_component="TOSLINK">
             <audio_media type="optical_digital"></audio_media>
             <resource resource_type="AV_EXTERNALMEDIASERVER_SOURCE"></resource>
+            <resource resource_type="AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE"></resource>
             <resource resource_type="AV_VOLUMECONTROL_FUNCTION"></resource>
         </output>
         <data name_on_component="Ethernet">
@@ -56,6 +63,25 @@
         <volume_state_variable name="Volume_current_volume" min_value="0" max_value="50" owning_logical_component="Media_server" state_center_binding="CurrentVolume" granularity="1" state_center_type="string">40</volume_state_variable>
         <state_variable name="Mute_current_mute_setting" owning_logical_component="Media_server" state_center_binding="CurrentMuteStatus" state_center_type="string">OFF</state_variable>
         <state_variable name="Play_current_play_setting" owning_logical_component="Media_server" state_center_binding="CurrentPlayStatus" state_center_type="string">Stop</state_variable>
+        <state_variable name="CombinedPlay" owning_logical_component="Media_server" state_center_binding="CurrentCombinedPlayStatus" state_center_type="string">Stop</state_variable>
+        <state_variable name="ArtistName" owning_logical_component="Media_server" state_center_binding="CurrentArtistName" state_center_type="string"></state_variable>
+        <state_variable name="SongName" owning_logical_component="Media_server" state_center_binding="CurrentSongName" state_center_type="string"></state_variable>
+        <state_variable name="AlbumName" owning_logical_component="Media_server" state_center_binding="CurrentAlbumName" state_center_type="string"></state_variable>
+        <state_variable name="ArtworkURL" owning_logical_component="Media_server" state_center_binding="CurrentArtworkURL" state_center_type="string"></state_variable>
+        <state_variable name="MediaServerName" owning_logical_component="Media_server" state_center_binding="MediaServerName" state_center_type="string">Gigawatt</state_variable>
+        <state_variable name="ElapsedHour" owning_logical_component="Media_server" state_center_binding="CurrentElapsedHour" state_center_type="string">0</state_variable>
+        <state_variable name="ElapsedMinute" owning_logical_component="Media_server" state_center_binding="CurrentElapsedMinute" state_center_type="string">0</state_variable>
+        <state_variable name="ElapsedSecond" owning_logical_component="Media_server" state_center_binding="CurrentElapsedSecond" state_center_type="string">0</state_variable>
+        <state_variable name="RemainHour" owning_logical_component="Media_server" state_center_binding="CurrentTimeRemainingHour" state_center_type="string">0</state_variable>
+        <state_variable name="RemainMinute" owning_logical_component="Media_server" state_center_binding="CurrentTimeRemainingMinute" state_center_type="string">0</state_variable>
+        <state_variable name="RemainSecond" owning_logical_component="Media_server" state_center_binding="CurrentTimeRemainingSecond" state_center_type="string">0</state_variable>
+        <state_variable name="Progress" owning_logical_component="Media_server" state_center_binding="CurrentProgress" state_center_type="string">0</state_variable>
+        <state_variable name="ElapsedTime" owning_logical_component="Media_server" state_center_binding="CurrentElapsedTime" state_center_type="string">0:00:00</state_variable>
+        <state_variable name="RemainingTime" owning_logical_component="Media_server" state_center_binding="CurrentRemainingTime" state_center_type="string">0:00:00</state_variable>
+        <state_variable name="PauseStatus" owning_logical_component="Media_server" state_center_binding="CurrentPauseStatus" state_center_type="string">false</state_variable>
+        <state_variable name="PlayType" owning_logical_component="Media_server" state_center_binding="PlayType" state_center_type="string">1</state_variable>
+        <state_variable name="SeekDisabled" owning_logical_component="Media_server" state_center_binding="SeekDisabled" state_center_type="string">false</state_variable>
+        <state_variable name="NowPlayingSource" owning_logical_component="Media_server" state_center_binding="NowPlayingSource" state_center_type="string">Gigawatt</state_variable>
     </state_variable_list>
 
     <logical_component logical_component_name="Media_server">
@@ -98,6 +124,72 @@
                 <constant type="character">Artist=</constant>
                 <data type="character" terminator_type="end_of_data">
                     <update state="CurrentArtistName" type="string"></update>
+                </data>
+            </status_message>
+            <status_message name="CurrentArtistNameStatus">
+                <constant type="character">CurrentArtistName=</constant>
+                <data type="character" terminator_type="end_of_data">
+                    <update state="CurrentArtistName" type="string"></update>
+                </data>
+            </status_message>
+            <status_message name="CurrentSongNameStatus">
+                <constant type="character">CurrentSongName=</constant>
+                <data type="character" terminator_type="end_of_data">
+                    <update state="CurrentSongName" type="string"></update>
+                </data>
+            </status_message>
+            <status_message name="CurrentAlbumNameStatus">
+                <constant type="character">CurrentAlbumName=</constant>
+                <data type="character" terminator_type="end_of_data">
+                    <update state="CurrentAlbumName" type="string"></update>
+                </data>
+            </status_message>
+            <status_message name="CurrentArtworkURLStatus">
+                <constant type="character">CurrentArtworkURL=</constant>
+                <data type="character" terminator_type="end_of_data">
+                    <update state="CurrentArtworkURL" type="string"></update>
+                </data>
+            </status_message>
+            <status_message name="CurrentCombinedPlayStatusStatus">
+                <constant type="character">CurrentCombinedPlayStatus=</constant>
+                <data type="character" terminator_type="end_of_data">
+                    <update state="CurrentCombinedPlayStatus" type="string"></update>
+                </data>
+            </status_message>
+            <status_message name="MediaServerNameStatus">
+                <constant type="character">MediaServerName=</constant>
+                <data type="character" terminator_type="end_of_data">
+                    <update state="MediaServerName" type="string"></update>
+                </data>
+            </status_message>
+            <status_message name="CurrentElapsedTimeStatus">
+                <constant type="character">CurrentElapsedTime=</constant>
+                <data type="character" terminator_type="end_of_data">
+                    <update state="CurrentElapsedTime" type="string"></update>
+                </data>
+            </status_message>
+            <status_message name="CurrentRemainingTimeStatus">
+                <constant type="character">CurrentRemainingTime=</constant>
+                <data type="character" terminator_type="end_of_data">
+                    <update state="CurrentRemainingTime" type="string"></update>
+                </data>
+            </status_message>
+            <status_message name="CurrentProgressStatus">
+                <constant type="character">CurrentProgress=</constant>
+                <data type="character" terminator_type="end_of_data">
+                    <update state="CurrentProgress" type="string"></update>
+                </data>
+            </status_message>
+            <status_message name="CurrentPauseStatusStatus">
+                <constant type="character">CurrentPauseStatus=</constant>
+                <data type="character" terminator_type="end_of_data">
+                    <update state="CurrentPauseStatus" type="string"></update>
+                </data>
+            </status_message>
+            <status_message name="NowPlayingSourceStatus">
+                <constant type="character">NowPlayingSource=</constant>
+                <data type="character" terminator_type="end_of_data">
+                    <update state="NowPlayingSource" type="string"></update>
                 </data>
             </status_message>
         </status_messages>
@@ -229,6 +321,76 @@
                 <command_interface interface="ip">
                     <command response_required="no">
                         <command_string type="character">SendKeys Rewind</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+        </resource_component_actions>
+
+        <resource_component_actions resource_type="AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE">
+            <action name="CommandPlay">
+                <update_state_variable name="Play_current_play_setting" update_type="set" update_source="constant">Play</update_state_variable>
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Play</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="CommandPause">
+                <update_state_variable name="Play_current_play_setting" update_type="set" update_source="constant">Pause</update_state_variable>
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Pause</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="CommandStop">
+                <update_state_variable name="Play_current_play_setting" update_type="set" update_source="constant">Stop</update_state_variable>
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Stop</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="CommandSkipUp">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">SkipNext</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="CommandSkipDown">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">SkipPrevious</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="Play">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Play</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="Pause">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Pause</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="Stop">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Stop</command_string>
                         <delay ms_delay="200"></delay>
                     </command>
                 </command_interface>

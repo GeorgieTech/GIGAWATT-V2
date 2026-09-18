@@ -11,14 +11,14 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/crypt.css?v=2.2.39">
+<link rel="stylesheet" href="/crypt.css?v=2.2.40">
 </head>
 <body class="playing-page">
 <div class="app">
   <header class="topbar">
     <div class="brand">
       <h1>Gigawatt</h1>
-      <div class="sub">S2 · V2.2.39</div>
+      <div class="sub">S2 · V2.2.40</div>
     </div>
     <div class="top-end">
       <div class="hostline" id="hostline">Connecting…</div>
@@ -91,7 +91,7 @@ function fmt(sec) {
 }
 function esc(s) {
   return String(s || "").replace(/[&<>"']/g, (c) => ({
-    "&": "&", "<": "<", ">": ">", "\"": """, "'": "&#39;"
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
   }[c]));
 }
 function titleOf(name) {
@@ -193,8 +193,8 @@ async function tick() {
     if (apOn) {
       $("now").textContent = ap.title || "AirPlay";
       $("nowartist").textContent = ap.artist || ap.client || "AirPlay";
-    } else if (name) {
-      $("now").textContent = p.title || titleOf(name);
+    } else if (name || p.title || playing) {
+      $("now").textContent = p.title || titleOf(name) || "Playing";
       $("nowartist").textContent = p.artist || "Unknown artist";
     } else {
       $("now").textContent = "Nothing playing";
