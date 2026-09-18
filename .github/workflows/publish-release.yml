@@ -1,12 +1,12 @@
 name: Publish VERSION release
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: {}
   push:
     branches: [main]
     paths:
-      - "host-webui/VERSION"
-      - ".github/workflows/publish-release.yml"
+      - host-webui/VERSION
+      - .github/workflows/publish-release.yml
 
 permissions:
   contents: write
@@ -27,12 +27,4 @@ jobs:
             echo "Release $TAG already exists"
             exit 0
           fi
-          gh release create "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "V${VER}" \
-            --notes "Library Play next on this host and NAS.
-
-Tap a track to play it now. **Play next** puts it after the current song in Up next. Same control on This host and NAS. A mixed queue keeps the origin so the next track actually plays.
-
-Live **192.168.1.142**. Hard-refresh Library, or re-add the Home Screen icon if Safari is holding the old page. Play next is on track rows."
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "V${VER}" --notes "Library Play next on this host and NAS. Tap a track to play now. Play next queues it in Up next for This host and NAS. Live 192.168.1.142. Hard-refresh Library."
