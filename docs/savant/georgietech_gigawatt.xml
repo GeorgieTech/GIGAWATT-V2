@@ -5,10 +5,11 @@
   Inspector: 192.168.1.142  port 5004  (telnet, CR/LF)
   Wire: TOSLINK optical out of this chassis into the AVR / matrix optical in.
 
-  This is NOT SMS-102A. No SavantMediaQuery coprocessor (that protocol is
-  Savant's own media server). TOSLINK carries both EXTERNALMEDIASERVER
-  (transport) and LIVEMEDIAQUERY_SAVANTMEDIA (Now Playing / audio query).
-  No HDMI/VGA, no radio services.
+  This is NOT SMS-102A. No SavantMediaQuery coprocessor. TOSLINK is
+  AV_EXTERNALMEDIASERVER_SOURCE only (Media Player). Live Media Query was
+  removed in 1.2 — that service requires AV_STEREOSPEAKERS_SINK and a
+  Powered StereoSpeakers / subwoofer does not provide it. Now Playing is
+  State Center on the Media Player service. No HDMI/VGA, no radio.
 
   Host telnet tokens (see host-webui/savant.py):
     Play Pause Stop SkipNext SkipPrevious SkipUp SkipDown
@@ -22,7 +23,7 @@
     alias="Gigawatt,Gigawatt TOSLINK,GeorgieTech Gigawatt,CRYPT"
     device_class="Media_server"
     minimum_component_engine_version="0.0"
-    rpm_xml_version="1.1"
+    rpm_xml_version="1.2"
     minimum_compatible_xml_version="1.0">
 
     <notes>
@@ -32,7 +33,8 @@
         CurrentArtworkURL (unsolicited lines from the host). Do not add
         coprocessor SavantMediaQuery — that would steal this telnet session.
         Not affiliated with Savant Systems. Do not use SMS-102A with this host.
-        Version: 1.1 Change: Live media query resource + now-playing states. Risk: Low Importance: Critical
+        Version: 1.2 Change: Drop LIVEMEDIAQUERY (needs Stereo Speakers Sink; Office Subwoofer does not have it). Risk: Low Importance: Critical
+        Version: 1.1 Change: Now-playing State Center fields. Risk: Low Importance: Critical
         Version: 1.0 Change: Initial transport + volume. Risk: Low Importance: Critical
     </notes>
 
@@ -47,7 +49,6 @@
         <output name_on_component="TOSLINK">
             <audio_media type="optical_digital"></audio_media>
             <resource resource_type="AV_EXTERNALMEDIASERVER_SOURCE"></resource>
-            <resource resource_type="AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE"></resource>
             <resource resource_type="AV_VOLUMECONTROL_FUNCTION"></resource>
         </output>
         <data name_on_component="Ethernet">
@@ -321,76 +322,6 @@
                 <command_interface interface="ip">
                     <command response_required="no">
                         <command_string type="character">SendKeys Rewind</command_string>
-                        <delay ms_delay="200"></delay>
-                    </command>
-                </command_interface>
-            </action>
-        </resource_component_actions>
-
-        <resource_component_actions resource_type="AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE">
-            <action name="CommandPlay">
-                <update_state_variable name="Play_current_play_setting" update_type="set" update_source="constant">Play</update_state_variable>
-                <command_interface interface="ip">
-                    <command response_required="no">
-                        <command_string type="character">Play</command_string>
-                        <delay ms_delay="200"></delay>
-                    </command>
-                </command_interface>
-            </action>
-            <action name="CommandPause">
-                <update_state_variable name="Play_current_play_setting" update_type="set" update_source="constant">Pause</update_state_variable>
-                <command_interface interface="ip">
-                    <command response_required="no">
-                        <command_string type="character">Pause</command_string>
-                        <delay ms_delay="200"></delay>
-                    </command>
-                </command_interface>
-            </action>
-            <action name="CommandStop">
-                <update_state_variable name="Play_current_play_setting" update_type="set" update_source="constant">Stop</update_state_variable>
-                <command_interface interface="ip">
-                    <command response_required="no">
-                        <command_string type="character">Stop</command_string>
-                        <delay ms_delay="200"></delay>
-                    </command>
-                </command_interface>
-            </action>
-            <action name="CommandSkipUp">
-                <command_interface interface="ip">
-                    <command response_required="no">
-                        <command_string type="character">SkipNext</command_string>
-                        <delay ms_delay="200"></delay>
-                    </command>
-                </command_interface>
-            </action>
-            <action name="CommandSkipDown">
-                <command_interface interface="ip">
-                    <command response_required="no">
-                        <command_string type="character">SkipPrevious</command_string>
-                        <delay ms_delay="200"></delay>
-                    </command>
-                </command_interface>
-            </action>
-            <action name="Play">
-                <command_interface interface="ip">
-                    <command response_required="no">
-                        <command_string type="character">Play</command_string>
-                        <delay ms_delay="200"></delay>
-                    </command>
-                </command_interface>
-            </action>
-            <action name="Pause">
-                <command_interface interface="ip">
-                    <command response_required="no">
-                        <command_string type="character">Pause</command_string>
-                        <delay ms_delay="200"></delay>
-                    </command>
-                </command_interface>
-            </action>
-            <action name="Stop">
-                <command_interface interface="ip">
-                    <command response_required="no">
-                        <command_string type="character">Stop</command_string>
                         <delay ms_delay="200"></delay>
                     </command>
                 </command_interface>

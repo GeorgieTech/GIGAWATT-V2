@@ -190,7 +190,7 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(types, ["optical_digital"])
         resources = [n.get("resource_type") for n in root.findall(".//resource")]
         self.assertIn("AV_EXTERNALMEDIASERVER_SOURCE", resources)
-        self.assertIn("AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE", resources)
+        self.assertNotIn("AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE", resources)
         self.assertNotIn("AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE_RADIO_SPOTIFY", resources)
         ip = root.find(".//control_interfaces/ip")
         self.assertEqual(ip.get("port"), "5004")
