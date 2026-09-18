@@ -6,6 +6,8 @@ Inspector at this chassis IP, port 5004.
 """
 from __future__ import print_function
 
+import hashlib
+import json
 import os
 import socket
 import subprocess
@@ -15,6 +17,10 @@ import traceback
 
 SAVANT_PORT = int(os.environ.get("SAVANT_PORT", "5004"))
 PULSE_SINK = os.environ.get("PULSE_SINK", "@DEFAULT_SINK@")
+STATE_DIR = os.environ.get("CRYPT_STATE", "/data/crypt")
+RECENTS_FILE = os.path.join(STATE_DIR, "savant-recents.json")
+RECENTS_CAP = 40
+BROWSE_CAP = 400
 
 
 def savant_to_host_vol(n):
@@ -197,6 +203,238 @@ def _clean(text):
     return str(text or "").replace("\r", " ").replace("\n", " ").replace("\t", " ").strip()
 
 
+def media_guid(kind, key):
+    raw = hashlib.sha1(("%s:%s" % (kind, key or "")).encode("utf-8")).hexdigest()
+    return "{%s-%s-%s-%s-%s}" % (raw[0:8], raw[8:12], raw[12:16], raw[16:20], raw[20:32])
+
+
+def _quote(text):
+    return '"%s"' % _clean(text).replace("\\", "\\\\").replace('"', '\\"')
+
+
+_recents_lock = threading.Lock()
+
+
+def remember_play(name, title="", artist="", album="", origin="local"):
+    name = (name or "").strip()
+    if not name:
+        return
+    row = {
+        "name": name,
+        "title": _clean(title) or os.path.splitext(os.path.basename(name))[0],
+        "artist": _clean(artist),
+        "album": _clean(album),
+        "origin": "nas" if origin == "nas" else "local",
+        "at": int(time.time()),
+    }
+    with _recents_lock:
+        items = []
+        try:
+            with open(RECENTS_FILE, "r") as fh:
+                data = json.load(fh)
+            if isinstance(data, list):
+                items = [x for x in data if isinstance(x, dict)]
+        except (OSError, ValueError, TypeError):
+            items = []
+        items = [x for x in items if (x.get("name") or "") != name]
+        items.insert(0, row)
+        items = items[:RECENTS_CAP]
+        try:
+            os.makedirs(STATE_DIR, exist_ok=True)
+            tmp = RECENTS_FILE + ".tmp"
+            with open(tmp, "w") as fh:
+                json.dump(items, fh)
+                fh.write("\n")
+            os.replace(tmp, RECENTS_FILE)
+        except OSError:
+            pass
+
+
+def load_recents():
+    with _recents_lock:
+        try:
+            with open(RECENTS_FILE, "r") as fh:
+                data = json.load(fh)
+            if isinstance(data, list):
+                return [x for x in data if isinstance(x, dict) and x.get("name")]
+        except (OSError, ValueError, TypeError):
+            pass
+        return []
+
+
+def _tracks(bridge):
+    try:
+        return list(bridge.app.catalog_snapshot() or [])
+    except Exception:
+        return list(getattr(bridge.app, "tracks", None) or [])
+
+
+def _playlists(bridge):
+    try:
+        from library import PLAYLISTS
+        names = [t.get("name") for t in _tracks(bridge) if t.get("name")]
+        return PLAYLISTS.list(names)
+    except Exception:
+        return []
+
+
+def _by_guid(bridge, guid):
+    guid = (guid or "").strip()
+    if not guid:
+        return None
+    if not guid.startswith("{"):
+        guid = "{%s}" % guid.strip("{}")
+    for t in _tracks(bridge):
+        name = t.get("name") or ""
+        if media_guid("track", name) == guid:
+            return ("track", t)
+    for t in _tracks(bridge):
+        artist = t.get("main_artist") or t.get("artist") or ""
+        if artist and media_guid("artist", artist) == guid:
+            return ("artist", {"artist": artist})
+        album = t.get("album") or ""
+        if album and media_guid("album", artist + "/" + album) == guid:
+            return ("album", {"artist": artist, "album": album})
+    for p in _playlists(bridge):
+        if media_guid("playlist", p.get("id") or "") == guid:
+            return ("playlist", p)
+    for row in load_recents():
+        if media_guid("track", row.get("name") or "") == guid:
+            return ("track", row)
+    return None
+
+
+def browse_lines(kind, bridge):
+    tracks = _tracks(bridge)
+    kind = (kind or "").lower()
+    lines = []
+    if kind in ("artists", "browseartists"):
+        seen = []
+        for t in tracks:
+            artist = (t.get("main_artist") or t.get("artist") or "Unknown artist").strip()
+            if not artist or artist in seen:
+                continue
+            seen.append(artist)
+            if len(seen) >= BROWSE_CAP:
+                break
+            gid = media_guid("artist", artist)
+            lines.append("  Artist %s %s -1 \"\" \"\"" % (gid, _quote(artist)))
+        head = 'BeginArtists Total=%s Start=1 Alpha=1 Caption="Artists"' % len(lines)
+        return [head] + lines + ["EndArtists NoMore"]
+    if kind in ("albums", "browsealbums"):
+        seen = []
+        for t in tracks:
+            artist = (t.get("main_artist") or t.get("artist") or "").strip()
+            album = (t.get("album") or "Unknown album").strip()
+            key = artist + "/" + album
+            if key in seen:
+                continue
+            seen.append(key)
+            if len(seen) >= BROWSE_CAP:
+                break
+            gid = media_guid("album", key)
+            label = album if not artist else "%s — %s" % (artist, album)
+            lines.append("  Album %s %s 1 \"\" \"\"" % (gid, _quote(label)))
+        head = 'BeginAlbums Total=%s Start=1 Alpha=1 Caption="Albums"' % len(lines)
+        return [head] + lines + ["EndAlbums NoMore"]
+    if kind in ("titles", "browsetitles", "songs", "mymusic"):
+        for t in tracks[:BROWSE_CAP]:
+            name = t.get("name") or ""
+            title = t.get("title") or os.path.splitext(os.path.basename(name))[0]
+            artist = t.get("artist") or ""
+            album = t.get("album") or ""
+            gid = media_guid("track", name)
+            lines.append(
+                "  Title %s %s \"00:00:00\" 1 %s %s -1 \"\" \"\""
+                % (gid, _quote(title), _quote(artist), _quote(album))
+            )
+        head = 'BeginTitles Total=%s Start=1 Alpha=1 Caption="My Music"' % len(lines)
+        return [head] + lines + ["EndTitles NoMore"]
+    if kind in ("playlists", "browseplaylists"):
+        for p in _playlists(bridge)[:BROWSE_CAP]:
+            gid = media_guid("playlist", p.get("id") or "")
+            lines.append(
+                "  Playlist %s %s %s 1"
+                % (gid, _quote(p.get("name") or "Playlist"), p.get("count") or 0)
+            )
+        head = 'BeginPlaylists Total=%s Start=1 Alpha=1 Caption="Playlists"' % len(lines)
+        return [head] + lines + ["EndPlaylists NoMore"]
+    if kind in ("recents", "favorites", "browsefavorites"):
+        for row in load_recents()[:BROWSE_CAP]:
+            name = row.get("name") or ""
+            gid = media_guid("track", name)
+            lines.append(
+                "  Title %s %s \"00:00:00\" 1 %s %s -1 \"\" \"\""
+                % (
+                    gid,
+                    _quote(row.get("title") or name),
+                    _quote(row.get("artist")),
+                    _quote(row.get("album")),
+                )
+            )
+        head = 'BeginTitles Total=%s Start=1 Alpha=0 Caption="Recents"' % len(lines)
+        return [head] + lines + ["EndTitles NoMore"]
+    if kind in ("nowplaying", "browsenowplaying"):
+        snap = bridge.snapshot()
+        if snap.get("name"):
+            gid = media_guid("track", snap.get("name"))
+            lines.append(
+                "  Title %s %s \"00:00:00\" 1 %s %s -1 \"\" \"\""
+                % (
+                    gid,
+                    _quote(snap.get("title")),
+                    _quote(snap.get("artist")),
+                    _quote(snap.get("album")),
+                )
+            )
+        head = 'BeginNowPlaying Total=%s Start=1 Alpha=0 Caption="Queue"' % len(lines)
+        return [head] + lines + ["EndNowPlaying NoMore"]
+    return ["ERR browse"]
+
+
+def play_guid(bridge, guid):
+    hit = _by_guid(bridge, guid)
+    if not hit:
+        return False
+    kind, row = hit
+    if kind == "track":
+        name = row.get("name") or ""
+        origin = row.get("origin") or "local"
+        names = bridge._catalog_names()
+        if origin == "nas":
+            return bool(bridge.app.play_name(name, origin="nas"))
+        return bool(bridge.app.play_name(name, origin="local", order=names or None))
+    if kind == "artist":
+        artist = row.get("artist") or ""
+        names = [
+            t.get("name") for t in _tracks(bridge)
+            if (t.get("main_artist") or t.get("artist") or "") == artist and t.get("name")
+        ]
+        if not names:
+            return False
+        return bool(bridge.app.play_name(names[0], order=names))
+    if kind == "album":
+        artist = row.get("artist") or ""
+        album = row.get("album") or ""
+        names = []
+        for t in _tracks(bridge):
+            if (t.get("album") or "") != album:
+                continue
+            if artist and (t.get("main_artist") or t.get("artist") or "") != artist:
+                continue
+            if t.get("name"):
+                names.append(t.get("name"))
+        if not names:
+            return False
+        return bool(bridge.app.play_name(names[0], order=names))
+    if kind == "playlist":
+        tracks = [n for n in (row.get("tracks") or []) if n]
+        if not tracks:
+            return False
+        return bool(bridge.app.play_name(tracks[0], order=tracks))
+    return False
+
+
 def status_lines(snap, include_ok=True):
     vol = host_to_savant_vol(snap.get("volume") or 0)
     mute = "ON" if snap.get("muted") else "OFF"
@@ -248,6 +486,12 @@ def status_lines(snap, include_ok=True):
         "PlayType=1",
         "SeekDisabled=false",
         "NowPlayingSource=Gigawatt",
+        "ReportState Main TrackName=%s" % title,
+        "ReportState Main ArtistName=%s" % artist,
+        "ReportState Main AlbumName=%s" % album,
+        "ReportState Main MediaControl=%s" % play,
+        "ReportState Main SupportsMusic=True",
+        "ReportState Main Navigation=NavigatingMusic",
     ])
     return lines
 
@@ -333,7 +577,25 @@ def handle_line(raw, bridge):
             return ok, status_lines(bridge.snapshot())
         if key in ("getstatus", "status"):
             return True, status_lines(bridge.snapshot())
-        if key in ("shuffle", "repeat", "clearqueue", "thumbsup", "thumbsdown"):
+        if key in (
+            "browseartists", "browsealbums", "browsetitles", "browsesongs",
+            "browseplaylists", "browsefavorites", "browsenowplaying",
+            "mymusic", "navigatemymusic",
+        ):
+            return True, browse_lines(key, bridge)
+        if key in ("navigatemyplaylists", "playlists"):
+            return True, browse_lines("playlists", bridge)
+        if key in ("navigaterecent", "recents"):
+            return True, browse_lines("recents", bridge)
+        if key in ("playfavorite", "playmedia", "playtitle"):
+            ok = play_guid(bridge, arg)
+            return ok, status_lines(bridge.snapshot()) if ok else (False, ["ERR guid"])
+        if key in ("playalbum", "playartist", "playplaylist", "playcontainer"):
+            ok = play_guid(bridge, arg)
+            return ok, status_lines(bridge.snapshot()) if ok else (False, ["ERR guid"])
+        if key in ("shuffle", "repeat", "clearqueue", "thumbsup", "thumbsdown", "clearnowplaying"):
+            if key == "clearnowplaying":
+                bridge.stop()
             return True, ["OK"]
         return False, ["ERR unknown %s" % cmd]
     except Exception:

@@ -23,7 +23,7 @@
     alias="Gigawatt,Gigawatt TOSLINK,GeorgieTech Gigawatt,CRYPT"
     device_class="Media_server"
     minimum_component_engine_version="0.0"
-    rpm_xml_version="1.2"
+    rpm_xml_version="1.3"
     minimum_compatible_xml_version="1.0">
 
     <notes>
@@ -33,6 +33,7 @@
         CurrentArtworkURL (unsolicited lines from the host). Do not add
         coprocessor SavantMediaQuery — that would steal this telnet session.
         Not affiliated with Savant Systems. Do not use SMS-102A with this host.
+        Version: 1.3 Change: Restore Live Media Query (Savant Audio Query) plus PlayFavorite GUID / My Music browse on :5004. Risk: Low Importance: Critical
         Version: 1.2 Change: Drop LIVEMEDIAQUERY (needs Stereo Speakers Sink; Office Subwoofer does not have it). Risk: Low Importance: Critical
         Version: 1.1 Change: Now-playing State Center fields. Risk: Low Importance: Critical
         Version: 1.0 Change: Initial transport + volume. Risk: Low Importance: Critical
@@ -49,6 +50,7 @@
         <output name_on_component="TOSLINK">
             <audio_media type="optical_digital"></audio_media>
             <resource resource_type="AV_EXTERNALMEDIASERVER_SOURCE"></resource>
+            <resource resource_type="AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE"></resource>
             <resource resource_type="AV_VOLUMECONTROL_FUNCTION"></resource>
         </output>
         <data name_on_component="Ethernet">
@@ -322,6 +324,101 @@
                 <command_interface interface="ip">
                     <command response_required="no">
                         <command_string type="character">SendKeys Rewind</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+        </resource_component_actions>
+
+        <resource_component_actions resource_type="AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE">
+            <action name="CommandPlay">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Play</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="CommandPause">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Pause</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="CommandStop">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Stop</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="CommandSkipUp">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">SkipNext</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="CommandSkipDown">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">SkipPrevious</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="CommandPlayFavorite">
+                <action_argument name="GUID"/>
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">PlayFavorite</command_string>
+                        <parameter_list>
+                            <character_parameter action_argument="GUID" parameter_data_width="unique_id"></character_parameter>
+                        </parameter_list>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="Play">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Play</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="Pause">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Pause</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="Stop">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">Stop</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="Music">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">BrowseTitles</command_string>
+                        <delay ms_delay="200"></delay>
+                    </command>
+                </command_interface>
+            </action>
+            <action name="Navigate_MyMusic">
+                <command_interface interface="ip">
+                    <command response_required="no">
+                        <command_string type="character">BrowseTitles</command_string>
                         <delay ms_delay="200"></delay>
                     </command>
                 </command_interface>

@@ -176,6 +176,22 @@ class TokenTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(self.app.started[-1], "glow.flac")
 
+    def test_browse_artists_and_play_guid(self):
+        savant.RECENTS_FILE = "/tmp/crypt-savant-recents-test.json"
+        savant.STATE_DIR = "/tmp"
+        ok, lines = savant.handle_line("BrowseArtists", self.bridge)
+        self.assertTrue(ok)
+        self.assertTrue(any("BeginArtists" in row for row in lines))
+        self.assertTrue(any("CRYPT Test" in row or "Artist" in row for row in lines))
+        gid = savant.media_guid("track", "glow.flac")
+        ok, lines = savant.handle_line("PlayFavorite " + gid, self.bridge)
+        self.assertTrue(ok)
+        self.assertIn("glow.flac", self.app.started)
+        savant.remember_play("glow.flac", title="Glow", artist="CRYPT Test")
+        ok, lines = savant.handle_line("BrowseFavorites", self.bridge)
+        self.assertTrue(ok)
+        self.assertTrue(any("Glow" in row for row in lines))
+
 
 class ProfileTests(unittest.TestCase):
     def test_toslink_media_server_no_sms_coprocessor(self):
@@ -190,7 +206,7 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(types, ["optical_digital"])
         resources = [n.get("resource_type") for n in root.findall(".//resource")]
         self.assertIn("AV_EXTERNALMEDIASERVER_SOURCE", resources)
-        self.assertNotIn("AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE", resources)
+        self.assertIn("AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE", resources)
         self.assertNotIn("AV_LIVEMEDIAQUERY_SAVANTMEDIA_SOURCE_RADIO_SPOTIFY", resources)
         ip = root.find(".//control_interfaces/ip")
         self.assertEqual(ip.get("port"), "5004")

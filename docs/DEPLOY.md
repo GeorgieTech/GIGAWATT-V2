@@ -1,4 +1,4 @@
-# Deploy notes — Gigawatt V2.2.40
+# Deploy notes — Gigawatt V2.2.41
 
 Live target: **192.168.1.142** (SHC-S2-00 Quad). Never 192.168.1.40 / .178 / .179 / .180.
 
@@ -11,7 +11,7 @@ SSH user: `RPM`. Do not commit the password. `scp -O` from modern macOS.
 ```sh
 git clone https://github.com/GeorgieTech/GIGAWATT-V2.git
 cd GIGAWATT-V2
-git checkout v2.2.40
+git checkout v2.2.41
 chmod +x scripts/push-host.sh host-webui/install-on-host.sh
 scripts/push-host.sh 192.168.1.142
 ```
@@ -22,7 +22,7 @@ Confirm:
 curl -s http://192.168.1.142/api/status | python3 -c "import json,sys; print(json.load(sys.stdin).get('version'))"
 ```
 
-It must print `2.2.40`. Playing page shows the current track. Telnet **:5004** pushes CurrentSongName / CurrentArtistName / CurrentArtworkURL. Re-import `georgietech_gigawatt.xml` (v1.1) in RacePoint.
+It must print `2.2.41`. Re-import `georgietech_gigawatt.xml` (v1.3) so Savant Media Audio Query is back. Host browse: BrowseTitles / BrowsePlaylists / BrowseFavorites.
 
 ## First-time unit (once per chassis)
 

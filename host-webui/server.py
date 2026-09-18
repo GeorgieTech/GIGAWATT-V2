@@ -725,7 +725,10 @@ class CryptApp(object):
             rel = nas_rel_ok(name)
             if not rel or not os.path.isfile(os.path.join(NAS_DIR, rel)):
                 return False
-            return self.player.play(rel, start=start, silent=self._silent(), origin="nas")
+            ok = self.player.play(rel, start=start, silent=self._silent(), origin="nas")
+            if ok:
+                self._note_savant_play(rel, origin="nas")
+            return ok
         if not self._ensure_local(name):
             return False
         ok = self.player.play(name, start=start, silent=self._silent(), origin="local")
@@ -735,7 +738,22 @@ class CryptApp(object):
             if nxt:
                 WAVES.ensure(nxt)
                 COVERS.ensure(nxt)
+            self._note_savant_play(name, origin="local")
         return ok
+
+    def _note_savant_play(self, name, origin="local"):
+        try:
+            from savant import remember_play
+            snap = self.player.snapshot()
+            remember_play(
+                name,
+                title=snap.get("title") or "",
+                artist=snap.get("artist") or "",
+                album=snap.get("album") or "",
+                origin=origin,
+            )
+        except Exception:
+            pass
 
     def play_index(self, idx):
         self.refresh()
