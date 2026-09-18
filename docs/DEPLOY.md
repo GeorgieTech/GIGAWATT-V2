@@ -1,4 +1,4 @@
-# Deploy notes — Gigawatt V2.2.38
+# Deploy notes — Gigawatt V2.2.39
 
 Live target: **192.168.1.142** (SHC-S2-00 Quad). Never 192.168.1.40 / .178 / .179 / .180.
 
@@ -11,7 +11,7 @@ SSH user: `RPM`. Do not commit the password. `scp -O` from modern macOS.
 ```sh
 git clone https://github.com/GeorgieTech/GIGAWATT-V2.git
 cd GIGAWATT-V2
-git checkout v2.2.38
+git checkout v2.2.39
 chmod +x scripts/push-host.sh host-webui/install-on-host.sh
 scripts/push-host.sh 192.168.1.142
 ```
@@ -22,7 +22,7 @@ Confirm:
 curl -s http://192.168.1.142/api/status | python3 -c "import json,sys; print(json.load(sys.stdin).get('version'))"
 ```
 
-It must print `2.2.38`. Playing cover is a smaller square; Cover Art Archive prefers the 1200px front.
+It must print `2.2.39`. Telnet **:5004** speaks Savant Play/Pause/volume. Import `docs/savant/georgietech_gigawatt.xml` in RacePoint — not SMS-102A.
 
 ## First-time unit (once per chassis)
 

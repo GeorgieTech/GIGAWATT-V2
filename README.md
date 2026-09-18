@@ -1,10 +1,10 @@
-# Gigawatt V2.2.38
+# Gigawatt V2.2.39
 
 Repo: [`GIGAWATT-V2`](https://github.com/GeorgieTech/GIGAWATT-V2)
 
 A local TOSLINK music player on a recycled Savant S2 host (SHC-S2-00 Quad). Library on this disk, web UI on port 80, optical out.
 
-**Current release: [V2.2.38](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.38)** (`v2.2.38`). Previous: [V2.2.37](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.37) · [V2.2.36](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.36).
+**Current release: [V2.2.39](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.39)** (`v2.2.39`). Previous: [V2.2.38](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.38) · [V2.2.37](https://github.com/GeorgieTech/GIGAWATT-V2/releases/tag/v2.2.37).
 
 This project is **not affiliated with Savant Systems**.
 
@@ -20,6 +20,7 @@ There is **no cluster**, linked library, Unison, or host-to-host discovery. This
 - Dark Playing and Library UI, Karaoke, Report, 31-band TOSLINK EQ (in Settings)
 - Play through the S2 **TOSLINK** jack (`ffmpeg` → `paplay` → Pulse → `imx-spdif`)
 - **NAS** SMB share from Settings. Library can browse it; playback reads the share (files stay on the NAS). NAS lyrics stay on-demand (Karaoke → Fetch). Tracks on this disk fetch lyrics in the background; Library shows a progress bar.
+- **Savant** RacePoint profile (`docs/savant/georgietech_gigawatt.xml`): TOSLINK media server, telnet **:5004**. Not SMS-102A.
 
 No Spotify, DLNA, SSC expanders, AirPlay 2, or multi-host linking.
 

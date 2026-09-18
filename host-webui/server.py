@@ -32,6 +32,7 @@ from playback import load_playback, save_playback
 from wifi import Wifi
 import nas as nasmod
 from nas import NasShare, browse as nas_browse, NAS_BIN, rel_ok as nas_rel_ok
+from savant import SavantTelnet, SAVANT_PORT
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("WEBUI_PORT", "80"))
@@ -40,6 +41,7 @@ AIRPLAY_DIR = os.environ.get("AIRPLAY_DIR", "/data/opt/airplay")
 STATE_DIR = os.environ.get("CRYPT_STATE", "/data/crypt")
 AIRPLAY = None
 NAS = None
+SAVANT = None
 WIFI = Wifi()
 
 
@@ -526,6 +528,9 @@ class CryptApp(object):
                 "available": False, "mounted": False, "enabled": False, "error": "",
             },
             "lyrics_prep": LYRICS.status(),
+            "savant": SAVANT.snapshot() if SAVANT is not None else {
+                "ok": False, "port": SAVANT_PORT, "error": "",
+            },
         }
 
     def clock(self):
@@ -1352,19 +1357,21 @@ def _boot_nas():
 
 
 def main():
-    global NAS
+    global NAS, SAVANT
     os.makedirs(MUSIC_DIR, exist_ok=True)
     try:
         os.makedirs(NAS_DIR, exist_ok=True)
     except OSError:
         pass
     NAS = NasShare(NAS_BIN, NAS_DIR, STATE_DIR)
+    SAVANT = SavantTelnet(APP, port=SAVANT_PORT)
+    SAVANT.start()
     threading.Thread(target=_boot_airplay, daemon=True, name="boot-airplay").start()
     threading.Thread(target=_boot_nas, daemon=True, name="boot-nas").start()
     httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     me = identity()
-    print("Gigawatt %s listening on :%s music=%s id=%s uid=%s ip=%s" % (
-        VERSION, PORT, MUSIC_DIR, me.get("id"), me.get("uid"), me.get("ip")
+    print("Gigawatt %s listening on :%s music=%s id=%s uid=%s ip=%s savant=:%s" % (
+        VERSION, PORT, MUSIC_DIR, me.get("id"), me.get("uid"), me.get("ip"), SAVANT_PORT
     ), flush=True)
     try:
         httpd.serve_forever()

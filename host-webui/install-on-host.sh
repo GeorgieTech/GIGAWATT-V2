@@ -5,7 +5,7 @@ set -e
 mkdir -p /data/www /data/music /data/crypt
 cp /tmp/VERSION /tmp/index.html /tmp/library.html /tmp/eq.html /tmp/karaoke.html /tmp/report.html /tmp/settings.html /tmp/crypt.css \
   /tmp/server.py /tmp/player.py /tmp/library.py /tmp/wave.py /tmp/lyrics.py /tmp/research.py /tmp/report.py /tmp/essay.py /tmp/identity.py \
-  /tmp/airplay.py /tmp/playback.py /tmp/cover.py /tmp/wifi.py /tmp/nas.py /tmp/queueing.py /tmp/gigawatt-pulse.pa \
+  /tmp/airplay.py /tmp/playback.py /tmp/cover.py /tmp/wifi.py /tmp/nas.py /tmp/queueing.py /tmp/savant.py /tmp/gigawatt-pulse.pa \
   /tmp/pin-hostname.sh /tmp/manifest.webmanifest /tmp/favicon.svg /tmp/icon.png /tmp/apple-touch-icon.png /data/www/
 rm -f /data/www/unison.py /data/www/peers.py /data/www/crypt_wire.py
 chmod +x /data/www/pin-hostname.sh /data/www/server.py /data/www/player.py

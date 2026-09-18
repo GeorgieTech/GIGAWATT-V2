@@ -21,6 +21,7 @@ playback.py
 wifi.py
 nas.py
 queueing.py
+savant.py
 manifest.webmanifest
 favicon.svg
 icon.png
