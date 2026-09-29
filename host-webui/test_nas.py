@@ -35,10 +35,10 @@ class ApplyTests(unittest.TestCase):
         folder = tempfile.mkdtemp(prefix="nas-")
         try:
             share = nas.NasShare(folder, os.path.join(folder, "mnt"), folder)
-            ok = share.apply({"host": "192.168.1.61", "share": "Pool/Delorean/Music", "username": "carrillo"})
+            ok = share.apply({"host": "192.168.1.10", "share": "tank/media/Music", "username": "user"})
             self.assertTrue(ok, share.error)
             self.assertEqual(share.cfg["share"], "Music")
-            self.assertEqual(share.cfg["host"], "192.168.1.61")
+            self.assertEqual(share.cfg["host"], "192.168.1.10")
         finally:
             shutil.rmtree(folder, ignore_errors=True)
 

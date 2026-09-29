@@ -1,8 +1,9 @@
 #!/bin/bash
 # Copy this checkout onto one Gigawatt host and install.
-# Usage: scripts/push-host.sh 192.168.1.142
+# Usage: scripts/push-host.sh <ip>
+# Lab jack: scripts/push-host.sh 192.168.1.142
+# Shipped unit: pass the current DHCP address, not the lab IP.
 # SSH user is RPM. Do not put the password in this file.
-# Push this checkout onto 192.168.1.142 (currently v2.2.42).
 set -euo pipefail
 HOST="${1:-}"
 if [ -z "$HOST" ]; then

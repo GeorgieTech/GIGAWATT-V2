@@ -1,8 +1,8 @@
-# Host directories — 192.168.1.142
+# Host directories
 
-Live chassis: **crypt-001aae0739db0000** (SHC-S2-00 Quad). Gigawatt code, library, and caches live on **`/data`**. Factory Savant is still on `/` and `/usr/local`; those images are not deleted.
+These paths are the same on every Gigawatt chassis. The lab jack used to write this map is **192.168.1.142** (`crypt-001aae0739db0000`, SHC-S2-00 Quad). A shipped unit uses DHCP — look up `crypt-<uid>` on the router, then open `http://<that-ip>/`.
 
-Do **not** use **192.168.1.40**, **192.168.1.178**, **192.168.1.179**, or **192.168.1.180**.
+Gigawatt code, library, and caches live on **`/data`**. Factory Savant is still on `/` and `/usr/local`; those images are not deleted.
 
 Do not commit the RPM password, NAS password, or `rclone.conf`. SSH user is `RPM`.
 

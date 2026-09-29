@@ -6,13 +6,34 @@ import os
 import socket
 import time
 
-VERSION = "2.2.42"
-LAN_PREFIX = "192.168.1."
+VERSION = "2.2.43"
 BLOCKED = ("192.168.1.40", "192.168.1.178", "192.168.1.179", "192.168.1.180")
 
 
 def _self_id():
     return os.environ.get("CRYPT_ID") or socket.gethostname() or "crypt"
+
+
+def _is_lan(ip):
+    """True for RFC1918 IPv4 (DHCP on any home LAN, not only 192.168.1.0/24)."""
+    host = (ip or "").split("%")[0].strip()
+    parts = host.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        a, b = int(parts[0]), int(parts[1])
+        c, d = int(parts[2]), int(parts[3])
+    except ValueError:
+        return False
+    if not all(0 <= n <= 255 for n in (a, b, c, d)):
+        return False
+    if a == 10:
+        return True
+    if a == 172 and 16 <= b <= 31:
+        return True
+    if a == 192 and b == 168:
+        return True
+    return False
 
 
 def _blocked(host):
@@ -22,7 +43,7 @@ def _blocked(host):
     for bad in BLOCKED:
         if host == bad or host.endswith(bad):
             return True
-    if host.startswith(LAN_PREFIX):
+    if _is_lan(host):
         return False
     return True
 
@@ -89,22 +110,22 @@ def _lan_ip():
             continue
         seen.add(name)
         ip = _if_ip(name)
-        if ip and ip.startswith(LAN_PREFIX) and not _blocked(ip):
+        if ip and _is_lan(ip) and not _blocked(ip):
             return ip
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            sock.connect(("192.168.1.1", 1))
+            sock.connect(("1.1.1.1", 1))
             ip = sock.getsockname()[0]
         finally:
             sock.close()
-        if ip and ip.startswith(LAN_PREFIX) and not _blocked(ip):
+        if ip and _is_lan(ip) and not _blocked(ip):
             return ip
     except OSError:
         pass
     try:
         ip = socket.gethostbyname(socket.gethostname())
-        if ip.startswith(LAN_PREFIX) and not _blocked(ip):
+        if _is_lan(ip) and not _blocked(ip):
             return ip
     except OSError:
         pass

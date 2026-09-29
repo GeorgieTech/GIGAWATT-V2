@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Savant RacePoint telnet on :5004. MMS/SMS tokens -> this host's player.
 
-Python 3.8 stdlib. Does not talk to Carrillos Resident. Blueprint points
-Inspector at this chassis IP, port 5004.
+Python 3.8 stdlib. Blueprint points Inspector at this chassis' current
+LAN IP (DHCP on a shipped unit), port 5004.
 """
 from __future__ import print_function
 
@@ -121,7 +121,9 @@ class HostBridge(object):
                 return ""
             if path.startswith("http://") or path.startswith("https://"):
                 return path
-            ip = (identity() or {}).get("ip") or "192.168.1.142"
+            ip = (identity() or {}).get("ip") or ""
+            if not ip:
+                return ""
             if not path.startswith("/"):
                 path = "/" + path
             return "http://%s%s" % (ip, path)

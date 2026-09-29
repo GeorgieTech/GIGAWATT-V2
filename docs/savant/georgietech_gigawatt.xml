@@ -2,7 +2,8 @@
 <!--
   RacePoint profile for Gigawatt V2 on a recycled Savant SHC-S2-00.
 
-  Inspector: 192.168.1.142  port 5004  (telnet, CR/LF)
+  Inspector: this chassis' current LAN IP  port 5004  (telnet, CR/LF)
+  Lab jack example: 192.168.1.142. Shipped units use DHCP.
   Wire: TOSLINK optical out of this chassis into the AVR / matrix optical in.
 
   This is NOT SMS-102A. No SavantMediaQuery coprocessor. TOSLINK is
@@ -27,14 +28,15 @@
     minimum_compatible_xml_version="1.0">
 
     <notes>
-        Gigawatt local TOSLINK music player (SHC-S2-00 Quad at 192.168.1.142).
-        Control is IP telnet port 5004. Audio is optical digital only.
+        Gigawatt local TOSLINK music player (SHC-S2-00 Quad).
+        Control is IP telnet port 5004 at this chassis' current LAN address
+        (DHCP on a shipped unit; lab jack 192.168.1.142). Audio is optical digital only.
         Now Playing uses State Center CurrentArtistName / CurrentSongName /
         CurrentArtworkURL (unsolicited lines from the host). Do not add
         coprocessor SavantMediaQuery — that would steal this telnet session.
         Not affiliated with Savant Systems. Do not use SMS-102A with this host.
         Version: 1.3 Change: Restore Live Media Query (Savant Audio Query) plus PlayFavorite GUID / My Music browse on :5004. Risk: Low Importance: Critical
-        Version: 1.2 Change: Drop LIVEMEDIAQUERY (needs Stereo Speakers Sink; Office Subwoofer does not have it). Risk: Low Importance: Critical
+        Version: 1.2 Change: Drop LIVEMEDIAQUERY (needs Stereo Speakers Sink; a subwoofer-only endpoint does not have it). Risk: Low Importance: Critical
         Version: 1.1 Change: Now-playing State Center fields. Risk: Low Importance: Critical
         Version: 1.0 Change: Initial transport + volume. Risk: Low Importance: Critical
     </notes>

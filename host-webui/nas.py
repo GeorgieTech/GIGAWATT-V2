@@ -326,7 +326,7 @@ class NasShare(object):
         host = str(data.get("host") or "").strip()
         share = str(data.get("share") or "").strip().strip("/")
         folder = str(data.get("folder") or "").strip().strip("/")
-        # TrueNAS dataset Pool/Delorean/Music is not an SMB share. The share
+        # TrueNAS dataset tank/media/Music is not an SMB share. The share
         # name is the last segment (Music). Extra path goes in Folder.
         if share and "/" in share:
             parts = [p for p in share.split("/") if p]
