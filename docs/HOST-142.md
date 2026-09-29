@@ -26,6 +26,8 @@ Do **not** use **192.168.1.40**, **192.168.1.178**, **192.168.1.179**, or **192.
 
 Converted 2026-09-09: Savant `startupManager` + `nginx` masked, default `multi-user.target`, `crypt-hostname` / `crypt-pulse` / `crypt-web` enabled. This jack’s library is the files on **this** disk (`/data/music`). Caches stay under `/data/crypt`.
 
+Directory map: [LAYOUT.md](LAYOUT.md).
+
 Live UI: [http://192.168.1.142/](http://192.168.1.142/)
 
-Fleet role (worker vs TOSLINK playback) is not assigned yet. See [CLUSTER.md](CLUSTER.md).
+There is no cluster. See [CLUSTER.md](CLUSTER.md).

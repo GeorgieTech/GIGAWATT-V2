@@ -32,10 +32,14 @@ On a phone: open the UI in Safari/Chrome, then **Add to Home Screen**.
 |---|---|
 | Code | `/data/www` |
 | Library | `/data/music` |
+| Caches / state | `/data/crypt` |
 | Pulse | `crypt-pulse.service` |
+
+Host directory map (no track names): [docs/LAYOUT.md](docs/LAYOUT.md).
 
 ## Host
 
 - Hardware: [docs/HOST-142.md](docs/HOST-142.md)
+- Directories: [docs/LAYOUT.md](docs/LAYOUT.md)
 - Retired DualLite mule: [docs/HOST.md](docs/HOST.md)
 - Deploy: [docs/DEPLOY.md](docs/DEPLOY.md)

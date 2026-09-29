@@ -32,4 +32,6 @@ It must print `2.2.42`. Re-import `georgietech_gigawatt.xml` (v1.3) so Savant Me
 4. Install files in `/data/www`, music dir `/data/music`.
 5. Enable `crypt-hostname`, `crypt-pulse`, `crypt-web`.
 
+Host paths: [LAYOUT.md](LAYOUT.md).
+
 Savant images on the eMMC are not deleted. Cluster / peer linking was removed in V2.2.25.
