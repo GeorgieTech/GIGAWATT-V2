@@ -609,6 +609,51 @@ class LyricsIndex(object):
             self.queued.discard(rel)
         return removed
 
+    def prune(self, live_names):
+        """Remove lyrics cache JSON whose track is no longer on this disk."""
+        live = set(n.replace("\\", "/").lstrip("/") for n in (live_names or []) if n)
+        removed = 0
+        try:
+            listing = os.listdir(LYRICS_DIR)
+        except OSError:
+            listing = []
+        for fn in listing:
+            if fn.endswith(".tmp"):
+                path = os.path.join(LYRICS_DIR, fn)
+                try:
+                    os.remove(path)
+                    removed += 1
+                except OSError:
+                    pass
+                continue
+            if not fn.endswith(".json"):
+                continue
+            path = os.path.join(LYRICS_DIR, fn)
+            name = ""
+            try:
+                with open(path, "r") as fh:
+                    data = json.load(fh)
+                if isinstance(data, dict):
+                    name = (data.get("name") or "").replace("\\", "/").lstrip("/")
+            except (OSError, ValueError, TypeError):
+                name = ""
+            if name and name in live:
+                continue
+            try:
+                os.remove(path)
+                removed += 1
+            except OSError:
+                pass
+        with self.lock:
+            for key in list(self.mem):
+                data = self.mem.get(key) or {}
+                name = key if key in live else (data.get("name") or "")
+                if key not in live and name not in live:
+                    self.mem.pop(key, None)
+            self.queue = [n for n in self.queue if n in live]
+            self.queued = set(n for n in self.queued if n in live)
+        return removed
+
     def _fetch_lrclib(self, rel, full, artist, title, album, duration, write_sidecar=True):
         if not title:
             return None

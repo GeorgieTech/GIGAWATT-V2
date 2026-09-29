@@ -239,15 +239,19 @@ def remember_play(name, title="", artist="", album="", origin="local"):
         items = [x for x in items if (x.get("name") or "") != name]
         items.insert(0, row)
         items = items[:RECENTS_CAP]
-        try:
-            os.makedirs(STATE_DIR, exist_ok=True)
-            tmp = RECENTS_FILE + ".tmp"
-            with open(tmp, "w") as fh:
-                json.dump(items, fh)
-                fh.write("\n")
-            os.replace(tmp, RECENTS_FILE)
-        except OSError:
-            pass
+        _write_recents_locked(items)
+
+
+def _write_recents_locked(items):
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        tmp = RECENTS_FILE + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(items, fh)
+            fh.write("\n")
+        os.replace(tmp, RECENTS_FILE)
+    except OSError:
+        pass
 
 
 def load_recents():
@@ -260,6 +264,46 @@ def load_recents():
         except (OSError, ValueError, TypeError):
             pass
         return []
+
+
+def drop_play(name):
+    """Forget a local recents row when that file is deleted from this disk."""
+    name = (name or "").strip()
+    if not name:
+        return 0
+    with _recents_lock:
+        try:
+            with open(RECENTS_FILE, "r") as fh:
+                data = json.load(fh)
+            items = [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
+        except (OSError, ValueError, TypeError):
+            return 0
+        keep = [x for x in items if (x.get("name") or "") != name]
+        if len(keep) == len(items):
+            return 0
+        _write_recents_locked(keep)
+        return len(items) - len(keep)
+
+
+def prune_recents(live_local):
+    """Drop recents that pointed at local files no longer on this disk. NAS rows stay."""
+    live = set(n.replace("\\", "/").lstrip("/") for n in (live_local or []) if n)
+    with _recents_lock:
+        try:
+            with open(RECENTS_FILE, "r") as fh:
+                data = json.load(fh)
+            items = [x for x in data if isinstance(x, dict) and x.get("name")] if isinstance(data, list) else []
+        except (OSError, ValueError, TypeError):
+            return 0
+        keep = []
+        for row in items:
+            origin = "nas" if row.get("origin") == "nas" else "local"
+            if origin == "nas" or (row.get("name") or "") in live:
+                keep.append(row)
+        dropped = len(items) - len(keep)
+        if dropped:
+            _write_recents_locked(keep)
+        return dropped
 
 
 def _tracks(bridge):

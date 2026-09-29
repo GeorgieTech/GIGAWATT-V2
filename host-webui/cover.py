@@ -28,7 +28,7 @@ COVER_DIR = os.environ.get("CRYPT_COVERS", "/data/crypt/covers")
 INDEX_FILE = os.path.join(COVER_DIR, "index.json")
 MB = os.environ.get("CRYPT_MUSICBRAINZ", "https://musicbrainz.org/ws/2")
 CAA = os.environ.get("CRYPT_CAA", "https://coverartarchive.org")
-CLIENT = "CRYPT/2.2.36 (https://github.com/GeorgieTech/GIGAWATT-V2)"
+CLIENT = "CRYPT/2.2.42 (https://github.com/GeorgieTech/GIGAWATT-V2)"
 MAX_BYTES = 400 * 1024
 MISSING_TTL = 7 * 24 * 3600
 SIDECARS = (
@@ -168,6 +168,18 @@ def _join(rel):
     return rel, full
 
 
+def _unlink(path):
+    try:
+        os.remove(path)
+        return True
+    except OSError:
+        return False
+
+
+def extract_filename(rel):
+    return "extract-" + album_key("", "", rel) + ".img"
+
+
 class CoverIndex(object):
     def __init__(self, folder=None, http_json=None, http_bytes=None, pause=None):
         self.folder = folder or COVER_DIR
@@ -253,6 +265,86 @@ class CoverIndex(object):
         except OSError:
             return "", ""
         return path, _ctype(raw) or "image/jpeg"
+
+    def drop_name(self, rel, remaining=None, key=""):
+        """Drop this track's extract file. Drop album art only when no sibling still uses it."""
+        rel = (rel or "").replace("\\", "/").lstrip("/")
+        if not rel:
+            return 0
+        removed = 0
+        extract = os.path.join(self.folder, extract_filename(rel))
+        for path in (extract, extract + ".tmp"):
+            if _unlink(path):
+                removed += 1
+        if not key:
+            _rel, artist, album, _title = _ident(rel)
+            key = album_key(artist, album, rel)
+        keep = False
+        if key:
+            if remaining is None:
+                try:
+                    remaining = CATALOG.tracks()
+                except Exception:
+                    remaining = []
+            for t in remaining or []:
+                name = (t.get("name") or "").replace("\\", "/").lstrip("/")
+                if not name or name == rel:
+                    continue
+                if album_key(t.get("artist"), t.get("album"), name) == key:
+                    keep = True
+                    break
+        if key and not keep:
+            for path in (self._path(key), self._path(key) + ".tmp"):
+                if _unlink(path):
+                    removed += 1
+            with self.lock:
+                if key in self.index:
+                    self.index.pop(key, None)
+                    self._save()
+                self._caa_tried.discard(key)
+        with self.lock:
+            self.queue = [n for n in self.queue if n != rel]
+            self.busy.discard(rel)
+        return removed
+
+    def prune(self, tracks):
+        """Remove extract leftovers and cover files whose album is no longer in the library."""
+        live_rel = set()
+        live_key = set()
+        for t in tracks or []:
+            name = (t.get("name") or "").replace("\\", "/").lstrip("/")
+            if not name:
+                continue
+            live_rel.add(name)
+            k = album_key(t.get("artist"), t.get("album"), name)
+            if k:
+                live_key.add(k)
+        removed = 0
+        try:
+            listing = os.listdir(self.folder)
+        except OSError:
+            listing = []
+        for fn in listing:
+            if fn == "index.json":
+                continue
+            path = os.path.join(self.folder, fn)
+            if fn.startswith("extract-") or fn.endswith(".tmp"):
+                if _unlink(path):
+                    removed += 1
+                continue
+            if fn.endswith(".img"):
+                key = fn[:-4]
+                if key not in live_key and _unlink(path):
+                    removed += 1
+        with self.lock:
+            drop = [k for k in self.index if k not in live_key]
+            for k in drop:
+                self.index.pop(k, None)
+            self.queue = [n for n in self.queue if n in live_rel]
+            self.busy = set(n for n in self.busy if n in live_rel)
+            if drop:
+                self._save()
+        return removed
 
     def ensure(self, rel, front=False):
         rel = (rel or "").replace("\\", "/").lstrip("/")
@@ -368,7 +460,7 @@ class CoverIndex(object):
             if raw and len(raw) <= MAX_BYTES and _ctype(raw):
                 return raw, _ctype(raw), False
         os.makedirs(self.folder, exist_ok=True)
-        dest = os.path.join(self.folder, "extract-" + album_key("", "", rel) + ".img")
+        dest = os.path.join(self.folder, extract_filename(rel))
         try:
             from wave import WAVES
             with WAVES.lock:
@@ -376,6 +468,7 @@ class CoverIndex(object):
                     return b"", "", True
         except Exception:
             pass
+        raw_out, kind_out = b"", ""
         try:
             subprocess.check_call(
                 [
@@ -390,14 +483,11 @@ class CoverIndex(object):
                 raw = fh.read(MAX_BYTES + 1)
             kind = _ctype(raw)
             if raw and len(raw) <= MAX_BYTES and kind:
-                return raw, kind, False
+                raw_out, kind_out = raw, kind
         except Exception:
             pass
-        try:
-            os.remove(dest)
-        except OSError:
-            pass
-        return b"", "", False
+        _unlink(dest)
+        return raw_out, kind_out, False
 
     def _caa_bytes(self, artist, album, title):
         if (artist or "") in ("", UNKNOWN_ARTIST) and (album or "") in ("", UNKNOWN_ALBUM):

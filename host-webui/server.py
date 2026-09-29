@@ -21,7 +21,7 @@ from urllib.parse import parse_qs
 
 from player import HostPlayer, MUSIC_DIR, NAS_DIR, EQ_BANDS, EQ_PRESETS, EQ_Q, clamp_eq, eq_region
 from queueing import sanitize_requester, insert_play_next
-from library import CATALOG, PLAYLISTS, GENRES
+from library import CATALOG, PLAYLISTS, GENRES, sweep_music_orphans
 from wave import WAVES
 from lyrics import LYRICS
 from report import REPORTS
@@ -832,16 +832,25 @@ class CryptApp(object):
         return self.player.seek(seconds)
 
     def delete_name(self, name, refresh=True):
+        rel = (name or "").replace("\\", "/").lstrip("/")
+        if not rel or ".." in rel.split("/"):
+            return False
+        if os.path.splitext(rel)[1].lower() not in AUDIO_EXT:
+            return False
         base = os.path.realpath(MUSIC_DIR)
-        full = os.path.realpath(os.path.join(base, name.replace("\\", "/").lstrip("/")))
-        if full != base and not full.startswith(base + os.sep):
+        full = os.path.realpath(os.path.join(base, rel))
+        if full == base or not full.startswith(base + os.sep):
             return False
         if not os.path.isfile(full):
             return False
         snap = self.player.snapshot()
-        rel = name.replace("\\", "/").lstrip("/")
         if snap.get("name") == rel:
             self.player.stop()
+        cover_key = ""
+        try:
+            cover_key = COVERS.snapshot(rel).get("id") or ""
+        except Exception:
+            cover_key = ""
         WAVES.drop_name(rel)
         LYRICS.drop_name(rel)
         REPORTS.drop_name(rel)
@@ -851,6 +860,18 @@ class CryptApp(object):
             return False
         CATALOG.drop_name(rel)
         PLAYLISTS.remove_everywhere(rel)
+        remaining = []
+        try:
+            remaining = CATALOG.tracks()
+        except Exception:
+            remaining = []
+        COVERS.drop_name(rel, remaining=remaining, key=cover_key)
+        try:
+            from savant import drop_play
+            drop_play(rel)
+        except Exception:
+            pass
+        sweep_music_orphans()
         with self.lock:
             self.requests.pop(rel, None)
         if refresh:
@@ -875,6 +896,7 @@ class CryptApp(object):
             if self.delete_name(name, refresh=False):
                 deleted += 1
         if deleted:
+            _prune_track_caches()
             self.refresh()
         return deleted
 
@@ -891,6 +913,44 @@ class CryptApp(object):
         payload["deleted"] = deleted
         payload["edited"] = edited
         return payload
+
+
+def _prune_track_caches():
+    """Drop cover/wave/lyrics/report/meta rows for files that are no longer in /data/music."""
+    try:
+        tracks = CATALOG.tracks()
+    except Exception:
+        tracks = []
+    names = [t.get("name") for t in tracks if t.get("name")]
+    try:
+        WAVES.prune(names)
+    except Exception:
+        traceback.print_exc()
+    try:
+        LYRICS.prune(names)
+    except Exception:
+        traceback.print_exc()
+    try:
+        REPORTS.prune(names)
+    except Exception:
+        traceback.print_exc()
+    try:
+        COVERS.prune(tracks)
+    except Exception:
+        traceback.print_exc()
+    try:
+        CATALOG.prune(names)
+    except Exception:
+        traceback.print_exc()
+    try:
+        sweep_music_orphans()
+    except Exception:
+        traceback.print_exc()
+    try:
+        from savant import prune_recents
+        prune_recents(names)
+    except Exception:
+        traceback.print_exc()
 
 
 APP = CryptApp()
@@ -1374,6 +1434,14 @@ def _boot_nas():
         traceback.print_exc()
 
 
+def _boot_prune():
+    time.sleep(1)
+    try:
+        _prune_track_caches()
+    except Exception:
+        traceback.print_exc()
+
+
 def main():
     global NAS, SAVANT
     os.makedirs(MUSIC_DIR, exist_ok=True)
@@ -1386,6 +1454,7 @@ def main():
     SAVANT.start()
     threading.Thread(target=_boot_airplay, daemon=True, name="boot-airplay").start()
     threading.Thread(target=_boot_nas, daemon=True, name="boot-nas").start()
+    threading.Thread(target=_boot_prune, daemon=True, name="boot-prune").start()
     httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     me = identity()
     print("Gigawatt %s listening on :%s music=%s id=%s uid=%s ip=%s savant=:%s" % (

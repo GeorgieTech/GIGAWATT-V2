@@ -436,5 +436,46 @@ class ReportIndex(object):
             self.mem.pop(rel, None)
         return removed
 
+    def prune(self, live_names):
+        """Remove report JSON whose track is no longer in the library."""
+        live = set(n.replace("\\", "/").lstrip("/") for n in (live_names or []) if n)
+        removed = 0
+        try:
+            listing = os.listdir(REPORT_DIR)
+        except OSError:
+            listing = []
+        for fn in listing:
+            if fn.endswith(".tmp"):
+                path = os.path.join(REPORT_DIR, fn)
+                try:
+                    os.remove(path)
+                    removed += 1
+                except OSError:
+                    pass
+                continue
+            if not fn.endswith(".json"):
+                continue
+            path = os.path.join(REPORT_DIR, fn)
+            name = ""
+            try:
+                with open(path, "r") as fh:
+                    data = json.load(fh)
+                if isinstance(data, dict):
+                    name = (data.get("name") or "").replace("\\", "/").lstrip("/")
+            except (OSError, ValueError, TypeError):
+                name = ""
+            if name and name in live:
+                continue
+            try:
+                os.remove(path)
+                removed += 1
+            except OSError:
+                pass
+        with self.lock:
+            for key in list(self.mem):
+                if key not in live:
+                    self.mem.pop(key, None)
+        return removed
+
 
 REPORTS = ReportIndex()

@@ -565,6 +565,59 @@ class WaveIndex(object):
             self.queue = [item for item in self.queue if item != rel]
         return removed
 
+    def prune(self, live_names):
+        """Remove waveform JSON whose track is no longer in the library."""
+        live = set(n.replace("\\", "/").lstrip("/") for n in (live_names or []) if n)
+        removed = 0
+        try:
+            listing = os.listdir(WAVE_DIR)
+        except OSError:
+            listing = []
+        victims = []
+        for fn in listing:
+            if fn.endswith(".tmp"):
+                path = os.path.join(WAVE_DIR, fn)
+                try:
+                    os.remove(path)
+                    removed += 1
+                except OSError:
+                    pass
+                continue
+            if not fn.endswith(".json"):
+                continue
+            path = os.path.join(WAVE_DIR, fn)
+            name = ""
+            try:
+                with open(path, "r") as fh:
+                    data = json.load(fh)
+                if isinstance(data, dict):
+                    name = (data.get("name") or "").replace("\\", "/").lstrip("/")
+            except (OSError, ValueError, TypeError):
+                name = ""
+            if name and name in live:
+                continue
+            victims.append(path)
+            try:
+                os.remove(path)
+                removed += 1
+            except OSError:
+                pass
+        with self.lock:
+            for path in list(self.mem):
+                data = self.mem.get(path) or {}
+                name = (data.get("name") or "")
+                if path in victims or (name and name not in live):
+                    self.mem.pop(path, None)
+            for rel in list(self.error):
+                if rel not in live:
+                    self.error.pop(rel, None)
+            for rel in list(self.progress):
+                if rel not in live:
+                    self.progress.pop(rel, None)
+            self.busy = set(n for n in self.busy if n in live)
+            self.queue = [n for n in self.queue if n in live]
+        return removed
+
     def _mark(self, rel, pct, stage):
         with self.lock:
             self.progress[rel] = {"pct": int(max(0, min(100, pct))), "stage": stage}

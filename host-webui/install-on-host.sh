@@ -8,6 +8,7 @@ cp /tmp/VERSION /tmp/index.html /tmp/library.html /tmp/eq.html /tmp/karaoke.html
   /tmp/airplay.py /tmp/playback.py /tmp/cover.py /tmp/wifi.py /tmp/nas.py /tmp/queueing.py /tmp/savant.py /tmp/gigawatt-pulse.pa \
   /tmp/pin-hostname.sh /tmp/manifest.webmanifest /tmp/favicon.svg /tmp/icon.png /tmp/apple-touch-icon.png /data/www/
 rm -f /data/www/unison.py /data/www/peers.py /data/www/crypt_wire.py
+rm -rf /data/www/__pycache__
 chmod +x /data/www/pin-hostname.sh /data/www/server.py /data/www/player.py
 APSRC=""
 # scp -r into an existing /tmp/gigawatt-airplay nests as .../airplay/.
@@ -147,6 +148,7 @@ systemctl is-active crypt-hostname.service || true
 hostname
 python3 -c "import sys; sys.path.insert(0, '/data/www'); import identity; print('version', identity.VERSION)"
 rm -f /data/www/peers.py /data/www/crypt_wire.py /data/www/unison.py
+rm -rf /data/www/__pycache__
 rm -f /data/crypt/peers.json /data/crypt/seen.json /data/crypt/hot.json
 test ! -e /data/www/peers.py
 ss -tln | grep -E ':80|:443' || true

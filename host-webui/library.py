@@ -16,6 +16,13 @@ STATE_DIR = os.environ.get("CRYPT_STATE", "/data/crypt")
 META_FILE = os.path.join(STATE_DIR, "library-meta.json")
 PLAYLIST_FILE = os.path.join(STATE_DIR, "playlists.json")
 AUDIO_EXT = (".mp3", ".flac", ".opus", ".ogg", ".wav", ".m4a", ".aac")
+LEFTOVER_ART = (
+    "cover.jpg", "cover.jpeg", "cover.png",
+    "folder.jpg", "folder.jpeg", "folder.png",
+    "AlbumArt.jpg", "AlbumArt.jpeg", "album.jpg",
+    "front.jpg", "Front.jpg",
+    ".DS_Store", "Thumbs.db", "desktop.ini",
+)
 UNKNOWN_ARTIST = "Unknown artist"
 UNKNOWN_ALBUM = "Unknown album"
 GENRES = (
@@ -389,6 +396,25 @@ class Library(object):
             if drop:
                 self._save()
 
+    def prune(self, live_names):
+        """Drop probe/edit rows for files that are no longer in /data/music."""
+        live = set(n.replace("\\", "/").lstrip("/") for n in (live_names or []) if n)
+        dropped = 0
+        with self.lock:
+            for key in list(self.cache):
+                parts = str(key).rsplit("|", 2)
+                name = parts[0] if len(parts) == 3 else ""
+                if not name or name not in live:
+                    self.cache.pop(key, None)
+                    dropped += 1
+            for name in list(self.edits):
+                if name not in live:
+                    self.edits.pop(name, None)
+                    dropped += 1
+            if dropped:
+                self._save()
+        return dropped
+
     def apply_edits(self, mapping):
         if not isinstance(mapping, dict):
             raise ValueError("edits must be a map of track names")
@@ -576,6 +602,48 @@ class Playlists(object):
             "tracks": list(item["tracks"]),
             "count": len(item["tracks"]),
         }
+
+
+def sweep_music_orphans():
+    """Remove leftover art/lyrics/.part and empty folders after tracks are gone."""
+    base = os.path.realpath(MUSIC_DIR)
+    if not os.path.isdir(base):
+        return 0
+    removed = 0
+    for dirpath, _dirnames, filenames in os.walk(base, topdown=False):
+        audio_stems = set()
+        for fn in filenames:
+            if os.path.splitext(fn)[1].lower() in AUDIO_EXT:
+                audio_stems.add(os.path.splitext(fn)[0])
+        for fn in filenames:
+            ext = os.path.splitext(fn)[1].lower()
+            stem = os.path.splitext(fn)[0]
+            full = os.path.join(dirpath, fn)
+            drop = False
+            if fn in LEFTOVER_ART and not audio_stems:
+                drop = True
+            elif ext == ".lrc" and stem not in audio_stems:
+                drop = True
+            elif ext == ".txt" and stem not in audio_stems:
+                if os.path.basename(dirpath).lower() == "lyrics" or not audio_stems:
+                    drop = True
+            elif ext in (".part", ".tmp"):
+                drop = True
+            if not drop:
+                continue
+            try:
+                os.remove(full)
+                removed += 1
+            except OSError:
+                pass
+        if os.path.realpath(dirpath) == base:
+            continue
+        try:
+            os.rmdir(dirpath)
+            removed += 1
+        except OSError:
+            pass
+    return removed
 
 
 CATALOG = Library()

@@ -11,6 +11,7 @@ import time
 
 MUSIC_DIR = os.environ.get("MUSIC_DIR", "/data/music")
 NAS_DIR = os.environ.get("NAS_DIR", "/data/nas")
+AUDIO_EXT = (".mp3", ".flac", ".opus", ".ogg", ".wav", ".m4a", ".aac")
 PULSE_SINK = os.environ.get("PULSE_SINK", "@DEFAULT_SINK@")
 FFMPEG_LOG = os.environ.get("FFMPEG_LOG", "/tmp/crypt-ffmpeg.log")
 PROGRESS_FILE = os.environ.get("PROGRESS_FILE", "/tmp/crypt-ff.progress")
@@ -518,9 +519,16 @@ class HostPlayer(object):
 
     def play(self, relname, start=0.0, silent=False, origin="local"):
         origin = "nas" if origin == "nas" else "local"
+        rel = (relname or "").replace("\\", "/").lstrip("/")
+        if not rel or ".." in rel.split("/"):
+            self.error = "not found"
+            return False
+        if os.path.splitext(rel)[1].lower() not in AUDIO_EXT:
+            self.error = "not found"
+            return False
         base = os.path.realpath(NAS_DIR if origin == "nas" else MUSIC_DIR)
-        full = os.path.realpath(os.path.join(base, relname.replace("\\", "/").lstrip("/")))
-        if full != base and not full.startswith(base + os.sep):
+        full = os.path.realpath(os.path.join(base, rel))
+        if full == base or not full.startswith(base + os.sep):
             self.error = "not found"
             return False
         if not os.path.isfile(full):

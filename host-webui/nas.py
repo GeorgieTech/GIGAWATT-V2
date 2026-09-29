@@ -8,6 +8,7 @@ from __future__ import print_function
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import threading
@@ -477,8 +478,16 @@ class NasShare(object):
             self.cfg["enabled"] = False
             self._save_locked()
             self._unmount_locked()
+            self._clear_vfs_locked()
             self.error = ""
             return True
+
+    def _clear_vfs_locked(self):
+        cache_dir = os.path.join(self.state_dir, "rclone-vfs")
+        try:
+            shutil.rmtree(cache_dir, ignore_errors=True)
+        except Exception:
+            pass
 
     def _remote_path_locked(self):
         share = (self.cfg.get("share") or "").strip("/")
